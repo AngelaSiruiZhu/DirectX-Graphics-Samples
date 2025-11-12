@@ -40,13 +40,6 @@ float3 DepthToColor(float depth)
     return float3(intensity, intensity, intensity);
 }
 
-// Analytical density function - exponential falloff from center
-float AnalyticalDensity(float3 pos, float3 center)
-{
-    float dist = length(pos - center);
-    return exp(-dist * 1.5);  // Exponential density falloff
-}
-
 // TRUE Interval Shading - NO ray marching!
 // Uses analytical integration of density function along the interval
 float4 AnalyticalIntervalShading(float3 rayEntry, float3 rayExit, float3 cameraPos)
@@ -93,12 +86,12 @@ float4 main(MeshOutput input) : SV_TARGET
 {
     if (ShowDepth == 1)
     {
-        // Mode 1: Show depth intervals as visualization
-        float entryDepth = length(input.RayEntry - CameraPosition);
-        float exitDepth = length(input.RayExit - CameraPosition);
+        // Mode 1: Show thickness (interval length)
+        // Thickness = how far the ray travels through the volume
+        float thickness = length(input.RayExit - input.RayEntry);
         
-        // Show entry depth as color
-        float3 color = DepthToColor(entryDepth);
+        // Map thickness to color (thicker = lighter, thinner = darker)
+        float3 color = DepthToColor(thickness);
         return float4(color, 0.7f);
     }
     else
