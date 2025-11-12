@@ -40,47 +40,53 @@ float3 DepthToColor(float depth)
     return float3(intensity, intensity, intensity);
 }
 
-// Main interval shading function - ray march through the volume
-float4 IntervalShading(float3 rayEntry, float3 rayExit, float3 cameraPos)
+// Analytical density function - exponential falloff from center
+float AnalyticalDensity(float3 pos, float3 center)
 {
-    // Calculate ray direction and interval length
-    float3 rayDir = rayExit - rayEntry;
-    float intervalLength = length(rayDir);
-    rayDir = normalize(rayDir);
+    float dist = length(pos - center);
+    return exp(-dist * 1.5);  // Exponential density falloff
+}
+
+// TRUE Interval Shading - NO ray marching!
+// Uses analytical integration of density function along the interval
+float4 AnalyticalIntervalShading(float3 rayEntry, float3 rayExit, float3 cameraPos)
+{
+    // Calculate parametric distances
+    float tEntry = length(rayEntry - cameraPos);
+    float tExit = length(rayExit - cameraPos);
     
-    // Number of samples along the ray interval
-    const int numSamples = 32;
-    float stepSize = intervalLength / float(numSamples);
-    
-    float4 accumulated = float4(0, 0, 0, 0);
-    float3 currentPos = rayEntry;
-    
-    // March along the ray within the computed interval
-    for (int i = 0; i < numSamples; i++)
+    // Invalid interval check
+    if (tExit <= tEntry || length(rayExit - rayEntry) < 0.001)
     {
-        // Calculate depth from camera
-        float depth = length(currentPos - cameraPos);
-        
-        // Get color based on depth
-        float3 depthColor = DepthToColor(depth);
-        
-        // Sample opacity based on position
-        float opacity = 0.15f * (1.0f - float(i) / float(numSamples)); // Fade towards back
-        
-        // Front-to-back compositing
-        float alpha = opacity;
-        accumulated.rgb += depthColor * alpha * (1.0f - accumulated.a);
-        accumulated.a += alpha * (1.0f - accumulated.a);
-        
-        // Early ray termination if fully opaque
-        if (accumulated.a >= 0.95f)
-            break;
-        
-        // Move to next sample position
-        currentPos += rayDir * stepSize;
+        return float4(0, 0, 0, 0);
     }
     
-    return accumulated;
+    // Ray direction
+    float3 rayDir = normalize(rayExit - rayEntry);
+    
+    // Volume center (tetrahedron center at origin)
+    float3 volumeCenter = float3(0, 0, 0);
+    
+    // Analytical integration:
+    // For exponential density: integral of exp(-k*t) from tEntry to tExit
+    // Result: (exp(-k*tEntry) - exp(-k*tExit)) / k
+    
+    float k = 1.5;  // Density falloff rate
+    float densityEntry = exp(-k * tEntry);
+    float densityExit = exp(-k * tExit);
+    
+    // Analytical integral (closed form - NO LOOP!)
+    float integratedDensity = (densityEntry - densityExit) / k;
+    
+    // Compute average depth for color mapping
+    float avgDepth = (tEntry + tExit) * 0.5;
+    float3 color = DepthToColor(avgDepth);
+    
+    // Opacity based on integrated density
+    float opacity = saturate(integratedDensity * 2.0);
+    
+    // Return final color with analytical opacity
+    return float4(color * opacity, opacity);
 }
 
 float4 main(MeshOutput input) : SV_TARGET
@@ -98,7 +104,7 @@ float4 main(MeshOutput input) : SV_TARGET
     else
     {
         // Mode 2: Full interval shading with depth-based coloring
-        float4 volumeColor = IntervalShading(
+        float4 volumeColor = AnalyticalIntervalShading(
             input.RayEntry,
             input.RayExit,
             CameraPosition
