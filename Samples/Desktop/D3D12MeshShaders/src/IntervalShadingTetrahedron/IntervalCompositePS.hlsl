@@ -22,8 +22,9 @@ cbuffer SceneConstants : register(b0)
     Constants Globals;
 };
 
-Texture2D<float4> IntervalTex : register(t2);
-Texture2D<float>  OpticalTex  : register(t3);
+Texture2D<float>  FrontTex   : register(t2);
+Texture2D<float>  BackTex    : register(t3);
+Texture2D<float>  OpticalTex : register(t4);
 SamplerState LinearClamp      : register(s0);
 
 struct PSIn
@@ -52,21 +53,22 @@ float3 HeatMap(float v)
 float4 main(PSIn input) : SV_Target
 {
     float2 uv = input.Tex;
-    float4 interval = IntervalTex.SampleLevel(LinearClamp, uv, 0);
-    float tau = OpticalTex.SampleLevel(LinearClamp, uv, 0);
+    float front = FrontTex.SampleLevel(LinearClamp, uv, 0);
+    float back  = BackTex.SampleLevel(LinearClamp, uv, 0);
+    float tau   = OpticalTex.SampleLevel(LinearClamp, uv, 0);
     float3 color = 0;
     float alpha = 1.0f;
 
     switch (Globals.DebugMode)
     {
     case 0: // front depth
-        color = DepthToGray(interval.x);
+        color = DepthToGray(front);
         break;
     case 1: // back depth
-        color = DepthToGray(interval.y);
+        color = DepthToGray(back);
         break;
     case 2: // interval length
-        color = HeatMap(saturate(interval.z * 0.2f));
+        color = HeatMap(saturate((back - front) * 0.2f));
         break;
     case 3: // tau debug
         color = HeatMap(saturate(tau * 0.2f));
@@ -86,7 +88,7 @@ float4 main(PSIn input) : SV_Target
         break;
     }
     default:
-        color = DepthToGray(interval.x);
+        color = DepthToGray(front);
         break;
     }
 

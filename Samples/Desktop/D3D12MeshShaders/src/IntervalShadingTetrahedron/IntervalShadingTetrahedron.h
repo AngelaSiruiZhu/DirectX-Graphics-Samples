@@ -56,7 +56,8 @@ private:
     ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
     ComPtr<ID3D12PipelineState> m_intervalPipelineState;
     ComPtr<ID3D12PipelineState> m_compositePipelineState;
-    ComPtr<ID3D12Resource> m_intervalRT;
+    ComPtr<ID3D12Resource> m_frontRT;
+    ComPtr<ID3D12Resource> m_backRT;
     ComPtr<ID3D12Resource> m_opticalDepthRT;
     ComPtr<ID3D12Resource> m_constantBuffer;
     UINT m_srvDescriptorSize;
@@ -83,6 +84,7 @@ private:
     ComPtr<ID3D12Resource> m_vertexBuffer;
     ComPtr<ID3D12Resource> m_tetBuffer;
     uint8_t* m_tetBufferMapped = nullptr;
+    XMFLOAT4X4 m_modelMatrix;
 
     bool LoadTetrahedralMesh(const std::wstring& path);
     void CreateIntervalTargets();
@@ -90,6 +92,7 @@ private:
     void BuildIntervalPipelineState();
     void BuildCompositePipelineState();
     void UploadBuffer(ID3D12Resource** destination, const void* data, size_t byteSize);
+    void ShuffleTets();
     void UpdateConstants();
     void LoadPipeline();
     void LoadAssets();

@@ -44,14 +44,15 @@ struct ClippedTets
 
 struct Proxy
 {
-    float4 pos[5];
+    float2 ndc[5];
+    float4 depths[5]; // frontZ, frontW, backZ, backW
     int pointCount;
 };
 
 struct ProxyVertex
 {
     float4 Position : SV_Position;
-    float2 Depths   : TEXCOORD0;
+    float4 Depths   : TEXCOORD0;
 };
 
 static const int2 edges[6] = {
@@ -115,18 +116,18 @@ ClippedTets ClipTet(Tet tet, float nearPlane)
     bool edgeClip[6] = { false, false, false, false, false, false };
     float4 clipPoint[6];
     float4 otherPoint[6];
-    for (int i = 0; i < 6; ++i)
+    for (int iEdge = 0; iEdge < 6; ++iEdge)
     {
-        int i0 = edges[i].x;
-        int i1 = edges[i].y;
-        edgeClip[i] = (clip[i0] && !clip[i1]) || (!clip[i0] && clip[i1]);
-        if (edgeClip[i])
+        int i0 = edges[iEdge].x;
+        int i1 = edges[iEdge].y;
+        edgeClip[iEdge] = (clip[i0] && !clip[i1]) || (!clip[i0] && clip[i1]);
+        if (edgeClip[iEdge])
         {
             float4 a = clip[i0] ? tet.pos[i0] : tet.pos[i1];
             float4 b = clip[i0] ? tet.pos[i1] : tet.pos[i0];
             float t = (nearPlane - a.z) / (b.z - a.z);
-            clipPoint[i] = a + (b - a) * t;
-            otherPoint[i] = b;
+            clipPoint[iEdge] = a + (b - a) * t;
+            otherPoint[iEdge] = b;
         }
     }
 
@@ -285,21 +286,29 @@ void main(
 
         for (int i = 0; i < clipped.count; ++i)
         {
+            float3 ndcPos[4];
+            float clipZ[4];
+            float clipW[4];
             for (int j = 0; j < 4; ++j)
             {
-                clipped.tets[i].pos[j] = mul(clipped.tets[i].pos[j], Globals.Proj);
-                clipped.tets[i].pos[j] /= clipped.tets[i].pos[j].w;
+                float4 clipCoord = mul(clipped.tets[i].pos[j], Globals.Proj);
+                clipZ[j] = clipCoord.z;
+                clipW[j] = clipCoord.w;
+                ndcPos[j] = clipCoord.xyz / clipCoord.w;
             }
 
             int nbTri = 0;
             for (int j = 0; j < 4; ++j)
             {
-                float4 p = clipped.tets[i].pos[potentialProjection[j].x];
+                float3 p = ndcPos[potentialProjection[j].x];
 
                 uint faceID = potentialProjection[j].y;
-                float4 a = clipped.tets[i].pos[faces[faceID].x];
-                float4 b = clipped.tets[i].pos[faces[faceID].y];
-                float4 c = clipped.tets[i].pos[faces[faceID].z];
+                uint ia = faces[faceID].x;
+                uint ib = faces[faceID].y;
+                uint ic = faces[faceID].z;
+                float3 a = ndcPos[ia];
+                float3 b = ndcPos[ib];
+                float3 c = ndcPos[ic];
 
                 float2 v0 = b.xy - a.xy;
                 float2 v1 = c.xy - b.xy;
@@ -317,12 +326,23 @@ void main(
                     float l1 = s2 / s;
                     float l2 = s0 / s;
                     float zInterp = (l0 * a.z + l1 * b.z + l2 * c.z);
+                    float interpClipZ = (l0 * clipZ[ia] + l1 * clipZ[ib] + l2 * clipZ[ic]);
+                    float interpClipW = (l0 * clipW[ia] + l1 * clipW[ib] + l2 * clipW[ic]);
 
                     nbTri = 3;
-                    proxies[i].pos[0] = float4(a.xy, a.z, a.z);
-                    proxies[i].pos[1] = float4(b.xy, b.z, b.z);
-                    proxies[i].pos[2] = float4(c.xy, c.z, c.z);
-                    proxies[i].pos[3] = (p.z < zInterp) ? float4(p.xyz, zInterp) : float4(p.xy, zInterp, p.z);
+                    proxies[i].ndc[0] = a.xy;
+                    proxies[i].ndc[1] = b.xy;
+                    proxies[i].ndc[2] = c.xy;
+                    proxies[i].ndc[3] = p.xy;
+
+                    proxies[i].depths[0] = float4(clipZ[ia], clipW[ia], clipZ[ia], clipW[ia]);
+                    proxies[i].depths[1] = float4(clipZ[ib], clipW[ib], clipZ[ib], clipW[ib]);
+                    proxies[i].depths[2] = float4(clipZ[ic], clipW[ic], clipZ[ic], clipW[ic]);
+                    float frontZ = (p.z < zInterp) ? clipZ[potentialProjection[j].x] : interpClipZ;
+                    float frontW = (p.z < zInterp) ? clipW[potentialProjection[j].x] : interpClipW;
+                    float backZ  = (p.z < zInterp) ? interpClipZ : clipZ[potentialProjection[j].x];
+                    float backW  = (p.z < zInterp) ? interpClipW : clipW[potentialProjection[j].x];
+                    proxies[i].depths[3] = float4(frontZ, frontW, backZ, backW);
                     proxies[i].pointCount = 4;
                 }
             }
@@ -332,10 +352,15 @@ void main(
 
             for (int j = 0; j < 3; ++j)
             {
-                float4 l0a = clipped.tets[i].pos[edges[potentialCrossing[j].x].x];
-                float4 l0b = clipped.tets[i].pos[edges[potentialCrossing[j].x].y];
-                float4 l1a = clipped.tets[i].pos[edges[potentialCrossing[j].y].x];
-                float4 l1b = clipped.tets[i].pos[edges[potentialCrossing[j].y].y];
+                uint l0aIdx = edges[potentialCrossing[j].x].x;
+                uint l0bIdx = edges[potentialCrossing[j].x].y;
+                uint l1aIdx = edges[potentialCrossing[j].y].x;
+                uint l1bIdx = edges[potentialCrossing[j].y].y;
+
+                float3 l0a = ndcPos[l0aIdx];
+                float3 l0b = ndcPos[l0bIdx];
+                float3 l1a = ndcPos[l1aIdx];
+                float3 l1b = ndcPos[l1bIdx];
 
                 float2 p;
                 float2 tVals;
@@ -344,11 +369,27 @@ void main(
                     float z0 = lerp(l0a.z, l0b.z, tVals.x);
                     float z1 = lerp(l1a.z, l1b.z, tVals.y);
 
-                    proxies[i].pos[0] = float4(l0a.xy, l0a.z, l0a.z);
-                    proxies[i].pos[1] = float4(l1a.xy, l1a.z, l1a.z);
-                    proxies[i].pos[2] = float4(l0b.xy, l0b.z, l0b.z);
-                    proxies[i].pos[3] = float4(l1b.xy, l1b.z, l1b.z);
-                    proxies[i].pos[4] = (z0 < z1) ? float4(p.xy, z0, z1) : float4(p.xy, z1, z0);
+                    float clipZ0 = lerp(clipZ[l0aIdx], clipZ[l0bIdx], tVals.x);
+                    float clipW0 = lerp(clipW[l0aIdx], clipW[l0bIdx], tVals.x);
+                    float clipZ1 = lerp(clipZ[l1aIdx], clipZ[l1bIdx], tVals.y);
+                    float clipW1 = lerp(clipW[l1aIdx], clipW[l1bIdx], tVals.y);
+
+                    proxies[i].ndc[0] = l0a.xy;
+                    proxies[i].ndc[1] = l1a.xy;
+                    proxies[i].ndc[2] = l0b.xy;
+                    proxies[i].ndc[3] = l1b.xy;
+                    proxies[i].ndc[4] = p;
+
+                    proxies[i].depths[0] = float4(clipZ[l0aIdx], clipW[l0aIdx], clipZ[l0aIdx], clipW[l0aIdx]);
+                    proxies[i].depths[1] = float4(clipZ[l1aIdx], clipW[l1aIdx], clipZ[l1aIdx], clipW[l1aIdx]);
+                    proxies[i].depths[2] = float4(clipZ[l0bIdx], clipW[l0bIdx], clipZ[l0bIdx], clipW[l0bIdx]);
+                    proxies[i].depths[3] = float4(clipZ[l1bIdx], clipW[l1bIdx], clipZ[l1bIdx], clipW[l1bIdx]);
+
+                    if (z0 < z1)
+                        proxies[i].depths[4] = float4(clipZ0, clipW0, clipZ1, clipW1);
+                    else
+                        proxies[i].depths[4] = float4(clipZ1, clipW1, clipZ0, clipW0);
+
                     proxies[i].pointCount = 5;
                     nbTri = 4;
                 }
@@ -372,8 +413,8 @@ void main(
     {
         for (int j = 0; j < proxies[i].pointCount; ++j)
         {
-            verts[vOffset + j].Position = float4(proxies[i].pos[j].xy, 0.0f, 1.0f);
-            verts[vOffset + j].Depths = proxies[i].pos[j].zw;
+            verts[vOffset + j].Position = float4(proxies[i].ndc[j], 0.0f, 1.0f);
+            verts[vOffset + j].Depths = proxies[i].depths[j];
         }
 
         if (proxies[i].pointCount == 4)

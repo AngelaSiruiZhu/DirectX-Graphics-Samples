@@ -12,6 +12,8 @@
 #include <numeric>
 #include <cstring>
 #include <stdexcept>
+#undef min
+#undef max
 
 using DirectX::XMMatrixInverse;
 
@@ -22,7 +24,7 @@ namespace
         L"..\\Assets\\IntervalShading\\bunny.vtk",        // from src folder
         L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\bunny.vtk" // absolute-ish from repo root
     };
-    constexpr float kDefaultDensity = 0.45f;
+    constexpr float kDefaultDensity = 0.8f;
     constexpr float kNearPlane = 0.1f;
 }
 
@@ -36,7 +38,7 @@ IntervalShadingTetrahedron::IntervalShadingTetrahedron(UINT width, UINT height, 
     m_cbvDataBegin(nullptr),
     m_cameraAngle(0.0f),
     m_cameraDistance(5.0f),
-    m_randomizeDrawOrder(true)
+    m_randomizeDrawOrder(false)
 {
     ZeroMemory(m_fenceValues, sizeof(m_fenceValues));
     ZeroMemory(&m_constantBufferData, sizeof(m_constantBufferData));
@@ -115,7 +117,7 @@ void IntervalShadingTetrahedron::LoadPipeline()
     // Create descriptor heaps
     {
         D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-        rtvHeapDesc.NumDescriptors = FrameCount + 2; // back buffers + interval/optical
+        rtvHeapDesc.NumDescriptors = FrameCount + 3; // back buffers + front/back/optical
         rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
         rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
         ThrowIfFailed(m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)));
@@ -129,7 +131,7 @@ void IntervalShadingTetrahedron::LoadPipeline()
         ThrowIfFailed(m_device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_dsvHeap)));
 
         D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-        srvHeapDesc.NumDescriptors = 4;
+        srvHeapDesc.NumDescriptors = 5;
         srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         ThrowIfFailed(m_device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_srvHeap)));
@@ -276,20 +278,23 @@ void IntervalShadingTetrahedron::PopulateCommandList()
 
     // First pass: interval generation into offscreen RTs
     {
-        CD3DX12_CPU_DESCRIPTOR_HANDLE intervalHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount, m_rtvDescriptorSize);
-        CD3DX12_CPU_DESCRIPTOR_HANDLE opticalHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount + 1, m_rtvDescriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE frontHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount, m_rtvDescriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE backHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount + 1, m_rtvDescriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE opticalHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount + 2, m_rtvDescriptorSize);
 
         CD3DX12_RESOURCE_BARRIER toRTs[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_intervalRT.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_frontRT.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_backRT.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET),
             CD3DX12_RESOURCE_BARRIER::Transition(m_opticalDepthRT.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET)
         };
         m_commandList->ResourceBarrier(_countof(toRTs), toRTs);
 
-        D3D12_CPU_DESCRIPTOR_HANDLE rtHandles[] = { intervalHandle, opticalHandle };
-        m_commandList->OMSetRenderTargets(2, rtHandles, FALSE, nullptr);
+        D3D12_CPU_DESCRIPTOR_HANDLE rtHandles[] = { frontHandle, backHandle, opticalHandle };
+        m_commandList->OMSetRenderTargets(_countof(rtHandles), rtHandles, FALSE, nullptr);
 
         const float clearInterval[4] = { 0, 0, 0, 0 };
-        m_commandList->ClearRenderTargetView(intervalHandle, clearInterval, 0, nullptr);
+        m_commandList->ClearRenderTargetView(frontHandle, clearInterval, 0, nullptr);
+        m_commandList->ClearRenderTargetView(backHandle, clearInterval, 0, nullptr);
         m_commandList->ClearRenderTargetView(opticalHandle, clearInterval, 0, nullptr);
 
         m_commandList->SetGraphicsRootSignature(m_intervalRootSignature.Get());
@@ -299,7 +304,8 @@ void IntervalShadingTetrahedron::PopulateCommandList()
         m_commandList->DispatchMesh(m_constantBufferData.TetCount, 1, 1);
 
         CD3DX12_RESOURCE_BARRIER toSRV[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_intervalRT.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_frontRT.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_backRT.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
             CD3DX12_RESOURCE_BARRIER::Transition(m_opticalDepthRT.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
         };
         m_commandList->ResourceBarrier(_countof(toSRV), toSRV);
@@ -356,12 +362,14 @@ void IntervalShadingTetrahedron::OnKeyDown(UINT8 key)
     case '4': m_constantBufferData.DebugMode = 3; break; // tau
     case '5': m_constantBufferData.DebugMode = 4; break; // T
     case '6': m_constantBufferData.DebugMode = 5; break; // fog/crystal
-    case 'R': case 'r': m_randomizeDrawOrder = !m_randomizeDrawOrder; break;
+    case 'R': case 'r':
+        ShuffleTets();
+        break;
 
     case VK_LEFT:  m_cameraAngle -= rotationSpeed; break;
     case VK_RIGHT: m_cameraAngle += rotationSpeed; break;
-    case 'W': case 'w': m_cameraDistance = max(1.5f, m_cameraDistance - zoomSpeed); break;
-    case 'S': case 's': m_cameraDistance = min(15.0f, m_cameraDistance + zoomSpeed); break;
+    case 'W': case 'w': m_cameraDistance = (std::max)(1.5f, m_cameraDistance - zoomSpeed); break;
+    case 'S': case 's': m_cameraDistance = (std::min)(15.0f, m_cameraDistance + zoomSpeed); break;
     }
     
     // Keep angle in valid range
@@ -417,6 +425,26 @@ bool IntervalShadingTetrahedron::LoadTetrahedralMesh(const std::wstring& path)
 
     CD3DX12_RANGE range(0, 0);
     ThrowIfFailed(m_tetBuffer->Map(0, &range, reinterpret_cast<void**>(&m_tetBufferMapped)));
+
+    // Build a centering/scaling model matrix so meshes land near the origin at a reasonable scale.
+    XMFLOAT3 minP(FLT_MAX, FLT_MAX, FLT_MAX);
+    XMFLOAT3 maxP(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+    for (auto& v : m_vertices)
+    {
+        minP.x = (std::min)(minP.x, v.x); minP.y = (std::min)(minP.y, v.y); minP.z = (std::min)(minP.z, v.z);
+        maxP.x = (std::max)(maxP.x, v.x); maxP.y = (std::max)(maxP.y, v.y); maxP.z = (std::max)(maxP.z, v.z);
+    }
+    XMVECTOR minV = XMLoadFloat3(&minP);
+    XMVECTOR maxV = XMLoadFloat3(&maxP);
+    XMVECTOR center = 0.5f * (minV + maxV);
+
+    XMFLOAT3 size;
+    XMStoreFloat3(&size, maxV - minV);
+    float maxExtent = (std::max)(size.x, (std::max)(size.y, size.z));
+    float scale = (maxExtent > 0.0001f) ? (1.5f / maxExtent) : 1.0f;
+
+    XMMATRIX model = XMMatrixScaling(scale, scale, scale) * XMMatrixTranslationFromVector(-center);
+    XMStoreFloat4x4(&m_modelMatrix, XMMatrixTranspose(model));
     return true;
 }
 
@@ -424,26 +452,38 @@ void IntervalShadingTetrahedron::CreateIntervalTargets()
 {
     CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
 
-    auto intervalDesc = CD3DX12_RESOURCE_DESC::Tex2D(
-        DXGI_FORMAT_R16G16B16A16_FLOAT,
+    auto frontDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+        DXGI_FORMAT_R16_FLOAT,
         m_width,
         m_height,
         1, 1, 1, 0,
         D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
-    D3D12_CLEAR_VALUE intervalClear = {};
-    intervalClear.Format = intervalDesc.Format;
-    intervalClear.Color[0] = intervalClear.Color[1] = intervalClear.Color[2] = intervalClear.Color[3] = 0.0f;
+    D3D12_CLEAR_VALUE frontClear = {};
+    frontClear.Format = frontDesc.Format;
+    frontClear.Color[0] = frontClear.Color[1] = frontClear.Color[2] = frontClear.Color[3] = 0.0f;
 
     ThrowIfFailed(m_device->CreateCommittedResource(
         &heap,
         D3D12_HEAP_FLAG_NONE,
-        &intervalDesc,
+        &frontDesc,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-        &intervalClear,
-        IID_PPV_ARGS(&m_intervalRT)));
+        &frontClear,
+        IID_PPV_ARGS(&m_frontRT)));
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE intervalHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount, m_rtvDescriptorSize);
-    m_device->CreateRenderTargetView(m_intervalRT.Get(), nullptr, intervalHandle);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE frontHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount, m_rtvDescriptorSize);
+    m_device->CreateRenderTargetView(m_frontRT.Get(), nullptr, frontHandle);
+
+    auto backDesc = frontDesc;
+    D3D12_CLEAR_VALUE backClear = frontClear;
+    ThrowIfFailed(m_device->CreateCommittedResource(
+        &heap,
+        D3D12_HEAP_FLAG_NONE,
+        &backDesc,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        &backClear,
+        IID_PPV_ARGS(&m_backRT)));
+    CD3DX12_CPU_DESCRIPTOR_HANDLE backHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount + 1, m_rtvDescriptorSize);
+    m_device->CreateRenderTargetView(m_backRT.Get(), nullptr, backHandle);
 
     auto opticalDesc = CD3DX12_RESOURCE_DESC::Tex2D(
         DXGI_FORMAT_R16_FLOAT,
@@ -463,7 +503,7 @@ void IntervalShadingTetrahedron::CreateIntervalTargets()
         &opticalClear,
         IID_PPV_ARGS(&m_opticalDepthRT)));
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE opticalHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount + 1, m_rtvDescriptorSize);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE opticalHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount + 2, m_rtvDescriptorSize);
     m_device->CreateRenderTargetView(m_opticalDepthRT.Get(), nullptr, opticalHandle);
 }
 
@@ -487,17 +527,19 @@ void IntervalShadingTetrahedron::CreateSrvHeap()
     m_device->CreateShaderResourceView(m_tetBuffer.Get(), &tetSrv, cpuHandle);
 
     cpuHandle.Offset(1, m_srvDescriptorSize);
-    D3D12_SHADER_RESOURCE_VIEW_DESC intervalSrv = {};
-    intervalSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    intervalSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    intervalSrv.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-    intervalSrv.Texture2D.MipLevels = 1;
-    m_device->CreateShaderResourceView(m_intervalRT.Get(), &intervalSrv, cpuHandle);
+    D3D12_SHADER_RESOURCE_VIEW_DESC texSrv = {};
+    texSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    texSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    texSrv.Texture2D.MipLevels = 1;
+
+    texSrv.Format = DXGI_FORMAT_R16_FLOAT;
+    m_device->CreateShaderResourceView(m_frontRT.Get(), &texSrv, cpuHandle);
 
     cpuHandle.Offset(1, m_srvDescriptorSize);
-    D3D12_SHADER_RESOURCE_VIEW_DESC opticalSrv = intervalSrv;
-    opticalSrv.Format = DXGI_FORMAT_R16_FLOAT;
-    m_device->CreateShaderResourceView(m_opticalDepthRT.Get(), &opticalSrv, cpuHandle);
+    m_device->CreateShaderResourceView(m_backRT.Get(), &texSrv, cpuHandle);
+
+    cpuHandle.Offset(1, m_srvDescriptorSize);
+    m_device->CreateShaderResourceView(m_opticalDepthRT.Get(), &texSrv, cpuHandle);
 }
 
 void IntervalShadingTetrahedron::BuildIntervalPipelineState()
@@ -506,7 +548,7 @@ void IntervalShadingTetrahedron::BuildIntervalPipelineState()
     std::vector<BYTE> pixelShader = ReadData(L"IntervalShadingPS.cso");
 
     CD3DX12_DESCRIPTOR_RANGE1 range;
-    range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);
+    range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);
 
     CD3DX12_ROOT_PARAMETER1 params[2];
     params[0].InitAsConstantBufferView(0);
@@ -523,22 +565,40 @@ void IntervalShadingTetrahedron::BuildIntervalPipelineState()
     ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_intervalRootSignature)));
 
     CD3DX12_BLEND_DESC blend(D3D12_DEFAULT);
+    // Front min
+    blend.RenderTarget[0].BlendEnable = TRUE;
+    blend.RenderTarget[0].BlendOp = D3D12_BLEND_OP_MIN;
+    blend.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+    blend.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+    blend.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_MIN;
+    blend.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+    blend.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
+    // Back max
     blend.RenderTarget[1].BlendEnable = TRUE;
+    blend.RenderTarget[1].BlendOp = D3D12_BLEND_OP_MAX;
     blend.RenderTarget[1].SrcBlend = D3D12_BLEND_ONE;
     blend.RenderTarget[1].DestBlend = D3D12_BLEND_ONE;
-    blend.RenderTarget[1].BlendOp = D3D12_BLEND_OP_ADD;
+    blend.RenderTarget[1].BlendOpAlpha = D3D12_BLEND_OP_MAX;
     blend.RenderTarget[1].SrcBlendAlpha = D3D12_BLEND_ONE;
     blend.RenderTarget[1].DestBlendAlpha = D3D12_BLEND_ONE;
-    blend.RenderTarget[1].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    // Optical additive
+    blend.RenderTarget[2].BlendEnable = TRUE;
+    blend.RenderTarget[2].BlendOp = D3D12_BLEND_OP_ADD;
+    blend.RenderTarget[2].SrcBlend = D3D12_BLEND_ONE;
+    blend.RenderTarget[2].DestBlend = D3D12_BLEND_ONE;
+    blend.RenderTarget[2].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    blend.RenderTarget[2].SrcBlendAlpha = D3D12_BLEND_ONE;
+    blend.RenderTarget[2].DestBlendAlpha = D3D12_BLEND_ONE;
 
     CD3DX12_DEPTH_STENCIL_DESC depth(D3D12_DEFAULT);
     depth.DepthEnable = FALSE;
     depth.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
 
     D3D12_RT_FORMAT_ARRAY rtvFormats = {};
-    rtvFormats.NumRenderTargets = 2;
-    rtvFormats.RTFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    rtvFormats.NumRenderTargets = 3;
+    rtvFormats.RTFormats[0] = DXGI_FORMAT_R16_FLOAT;
     rtvFormats.RTFormats[1] = DXGI_FORMAT_R16_FLOAT;
+    rtvFormats.RTFormats[2] = DXGI_FORMAT_R16_FLOAT;
 
     struct PipelineStateStream
     {
@@ -549,6 +609,7 @@ void IntervalShadingTetrahedron::BuildIntervalPipelineState()
         CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER RasterizerState;
         CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL DepthStencilState;
         CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+        CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL_FORMAT DSVFormat;
         CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_DESC SampleDesc;
         CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_MASK SampleMask;
     } psoStream;
@@ -560,6 +621,7 @@ void IntervalShadingTetrahedron::BuildIntervalPipelineState()
     psoStream.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     psoStream.DepthStencilState = depth;
     psoStream.RTVFormats = rtvFormats;
+    psoStream.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     psoStream.SampleDesc = DefaultSampleDesc();
     psoStream.SampleMask = UINT_MAX;
 
@@ -576,6 +638,7 @@ void IntervalShadingTetrahedron::BuildCompositePipelineState()
 
     m_compositeRootSignature = m_intervalRootSignature;
 
+    // We consume three SRVs (front/back/optical) and output final color.
     D3D12_RT_FORMAT_ARRAY rtvFormats = {};
     rtvFormats.NumRenderTargets = 1;
     rtvFormats.RTFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -593,6 +656,7 @@ void IntervalShadingTetrahedron::BuildCompositePipelineState()
         CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER RasterizerState;
         CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL DepthStencilState;
         CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+        CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL_FORMAT DSVFormat;
         CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_DESC SampleDesc;
         CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_MASK SampleMask;
         CD3DX12_PIPELINE_STATE_STREAM_PRIMITIVE_TOPOLOGY PrimitiveTopology;
@@ -605,6 +669,7 @@ void IntervalShadingTetrahedron::BuildCompositePipelineState()
     psoStream.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     psoStream.DepthStencilState = depth;
     psoStream.RTVFormats = rtvFormats;
+    psoStream.DSVFormat = DXGI_FORMAT_UNKNOWN;
     psoStream.SampleDesc = DefaultSampleDesc();
     psoStream.SampleMask = UINT_MAX;
     psoStream.PrimitiveTopology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
@@ -636,27 +701,6 @@ void IntervalShadingTetrahedron::UploadBuffer(ID3D12Resource** destination, cons
 
 void IntervalShadingTetrahedron::UpdateConstants()
 {
-    if (m_randomizeDrawOrder && m_tetBufferMapped && !m_tetIndices.empty())
-    {
-        const size_t tetCount = m_tetIndices.size() / 4;
-        std::vector<size_t> order(tetCount);
-        std::iota(order.begin(), order.end(), 0);
-        static std::mt19937 rng{ std::random_device{}() };
-        std::shuffle(order.begin(), order.end(), rng);
-
-        std::vector<uint32_t> shuffled(m_tetIndices.size());
-        for (size_t i = 0; i < tetCount; ++i)
-        {
-            const size_t src = order[i] * 4;
-            const size_t dst = i * 4;
-            shuffled[dst + 0] = m_tetIndices[src + 0];
-            shuffled[dst + 1] = m_tetIndices[src + 1];
-            shuffled[dst + 2] = m_tetIndices[src + 2];
-            shuffled[dst + 3] = m_tetIndices[src + 3];
-        }
-        std::memcpy(m_tetBufferMapped, shuffled.data(), shuffled.size() * sizeof(uint32_t));
-    }
-
     XMVECTOR cameraPos = XMVectorSet(
         m_cameraDistance * cosf(m_cameraAngle),
         m_cameraDistance * 0.35f,
@@ -671,7 +715,7 @@ void IntervalShadingTetrahedron::UpdateConstants()
     XMMATRIX viewProj = view * proj;
     XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
 
-    XMStoreFloat4x4(&m_constantBufferData.Model, XMMatrixTranspose(model));
+    m_constantBufferData.Model = m_modelMatrix;
     XMStoreFloat4x4(&m_constantBufferData.View, XMMatrixTranspose(view));
     XMStoreFloat4x4(&m_constantBufferData.Proj, XMMatrixTranspose(proj));
     XMStoreFloat4x4(&m_constantBufferData.ViewProj, XMMatrixTranspose(viewProj));
@@ -726,4 +770,27 @@ std::vector<BYTE> IntervalShadingTetrahedron::ReadData(const std::wstring& filen
     }
 
     return buffer;
+}
+void IntervalShadingTetrahedron::ShuffleTets()
+{
+    if (!m_tetBufferMapped || m_tetIndices.empty())
+        return;
+
+    const size_t tetCount = m_tetIndices.size() / 4;
+    std::vector<size_t> order(tetCount);
+    std::iota(order.begin(), order.end(), 0);
+    static std::mt19937 rng{ std::random_device{}() };
+    std::shuffle(order.begin(), order.end(), rng);
+
+    std::vector<uint32_t> shuffled(m_tetIndices.size());
+    for (size_t i = 0; i < tetCount; ++i)
+    {
+        const size_t src = order[i] * 4;
+        const size_t dst = i * 4;
+        shuffled[dst + 0] = m_tetIndices[src + 0];
+        shuffled[dst + 1] = m_tetIndices[src + 1];
+        shuffled[dst + 2] = m_tetIndices[src + 2];
+        shuffled[dst + 3] = m_tetIndices[src + 3];
+    }
+    std::memcpy(m_tetBufferMapped, shuffled.data(), shuffled.size() * sizeof(uint32_t));
 }
