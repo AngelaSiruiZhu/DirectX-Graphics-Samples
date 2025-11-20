@@ -101,6 +101,8 @@
   <ItemGroup>
     <None Include="IntervalShadingMS.hlsl" />
     <None Include="IntervalShadingPS.hlsl" />
+    <None Include="IntervalCompositePS.hlsl" />
+    <None Include="IntervalCompositeVS.hlsl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

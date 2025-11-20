@@ -1,111 +1,60 @@
 //*********************************************************
-// Interval Shading Pixel Shader - Depth Visualization
-// Renders depth through volume using ray marching intervals
+// Interval Shading Pixel Shader
+// Reconstructs front/back depth interval and accumulates optical depth.
 //*********************************************************
 
-struct MeshOutput
+struct Constants
 {
-    float4 Position : SV_Position;
-    float3 WorldPos : POSITION0;
-    float3 RayEntry : POSITION1;
-    float3 RayExit : POSITION2;
-    float4 Color : COLOR;
-    uint TriangleID : TEXCOORD0;
+    float4x4 Model;
+    float4x4 View;
+    float4x4 Proj;
+    float4x4 ViewProj;
+    float4x4 InvViewProj;
+    float NearPlane;
+    float Density;
+    uint DebugMode;
+    uint TetCount;
+    uint RandomizeOrder;
+    float3 Padding;
 };
 
 cbuffer SceneConstants : register(b0)
 {
-    float4x4 WorldViewProj;
-    float4x4 World;
-    float3 CameraPosition;
-    float Time;
-    uint ShowDepth;
-    float3 _padding;
+    Constants Globals;
 };
 
-// Depth to grayscale: White (near) to Dark Gray (far)
-// Matches paper convention where larger depth = darker
-float3 DepthToColor(float depth)
+struct ProxyVertex
 {
-    // Normalize depth to [0, 1] range
-    // Assuming depth range of approximately 0-6 units based on camera setup
-    float t = saturate(depth / 6.0f);
-    
-    // Invert: 1.0 (white) for near, 0.0 (black) for far
-    float intensity = 1.0f - t;
-    
-    // Add slight minimum to avoid pure black (makes it easier to see)
-    intensity = intensity * 0.9f + 0.1f;
-    
-    return float3(intensity, intensity, intensity);
-}
+    float4 Position : SV_Position;
+    float2 Depths   : TEXCOORD0;
+};
 
-// TRUE Interval Shading - NO ray marching!
-// Uses analytical integration of density function along the interval
-float4 AnalyticalIntervalShading(float3 rayEntry, float3 rayExit, float3 cameraPos)
+struct PSOutput
 {
-    // Calculate parametric distances
-    float tEntry = length(rayEntry - cameraPos);
-    float tExit = length(rayExit - cameraPos);
-    
-    // Invalid interval check
-    if (tExit <= tEntry || length(rayExit - rayEntry) < 0.001)
-    {
-        return float4(0, 0, 0, 0);
-    }
-    
-    // Ray direction
-    float3 rayDir = normalize(rayExit - rayEntry);
-    
-    // Volume center (tetrahedron center at origin)
-    float3 volumeCenter = float3(0, 0, 0);
-    
-    // Analytical integration:
-    // For exponential density: integral of exp(-k*t) from tEntry to tExit
-    // Result: (exp(-k*tEntry) - exp(-k*tExit)) / k
-    
-    float k = 1.5;  // Density falloff rate
-    float densityEntry = exp(-k * tEntry);
-    float densityExit = exp(-k * tExit);
-    
-    // Analytical integral (closed form - NO LOOP!)
-    float integratedDensity = (densityEntry - densityExit) / k;
-    
-    // Compute average depth for color mapping
-    float avgDepth = (tEntry + tExit) * 0.5;
-    float3 color = DepthToColor(avgDepth);
-    
-    // Opacity based on integrated density
-    float opacity = saturate(integratedDensity * 2.0);
-    
-    // Return final color with analytical opacity
-    return float4(color * opacity, opacity);
-}
+    float4 Interval : SV_Target0; // front, back, length, tau
+    float  Optical  : SV_Target1; // accumulated tau for blending
+};
 
-float4 main(MeshOutput input) : SV_TARGET
+PSOutput main(ProxyVertex input)
 {
-    if (ShowDepth == 1)
-    {
-        // Mode 1: Show thickness (interval length)
-        // Thickness = how far the ray travels through the volume
-        float thickness = length(input.RayExit - input.RayEntry);
-        
-        // Map thickness to color (thicker = lighter, thinner = darker)
-        float3 color = DepthToColor(thickness);
-        return float4(color, 0.7f);
-    }
-    else
-    {
-        // Mode 2: Full interval shading with depth-based coloring
-        float4 volumeColor = AnalyticalIntervalShading(
-            input.RayEntry,
-            input.RayExit,
-            CameraPosition
-        );
-        
-        // Enhance with base color tint
-        volumeColor.rgb *= input.Color.rgb * 1.2f;
-        
-        return float4(volumeColor.rgb, volumeColor.a * 0.85f);
-    }
+    PSOutput o;
+
+    float2 clipXY = input.Position.xy; // already in clip space
+    float4 clipFront = float4(clipXY, input.Depths.x, 1.0f);
+    float4 clipBack  = float4(clipXY, input.Depths.y, 1.0f);
+
+    float4 worldFront = mul(clipFront, Globals.InvViewProj);
+    float4 worldBack  = mul(clipBack,  Globals.InvViewProj);
+    worldFront /= worldFront.w;
+    worldBack  /= worldBack.w;
+
+    float intervalLength = length(worldBack.xyz - worldFront.xyz);
+    float tau = intervalLength * Globals.Density;
+
+    float frontDepth = length(worldFront.xyz);
+    float backDepth  = length(worldBack.xyz);
+
+    o.Interval = float4(frontDepth, backDepth, intervalLength, tau);
+    o.Optical = tau;
+    return o;
 }

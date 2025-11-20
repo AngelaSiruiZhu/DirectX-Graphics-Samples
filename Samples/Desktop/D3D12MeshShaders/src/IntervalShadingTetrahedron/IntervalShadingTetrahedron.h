@@ -6,6 +6,7 @@
 #pragma once
 
 #include "DXSample.h"
+#include <vector>
 
 using namespace DirectX;
 using Microsoft::WRL::ComPtr;
@@ -26,12 +27,17 @@ private:
 
     _declspec(align(256u)) struct SceneConstantBuffer
     {
-        XMFLOAT4X4 WorldViewProj;
-        XMFLOAT4X4 World;
-        XMFLOAT3 CameraPosition;
-        float Time;
-        uint32_t ShowDepth;
-        XMFLOAT3 Padding;
+        XMFLOAT4X4 Model;
+        XMFLOAT4X4 View;
+        XMFLOAT4X4 Proj;
+        XMFLOAT4X4 ViewProj;
+        XMFLOAT4X4 InvViewProj;
+        float NearPlane;
+        float Density;
+        uint32_t DebugMode;
+        uint32_t TetCount;
+        uint32_t RandomizeOrder;
+        float Padding[3];
     };
 
     // Pipeline objects
@@ -43,11 +49,19 @@ private:
     ComPtr<ID3D12Resource> m_depthStencil;
     ComPtr<ID3D12CommandAllocator> m_commandAllocators[FrameCount];
     ComPtr<ID3D12CommandQueue> m_commandQueue;
-    ComPtr<ID3D12RootSignature> m_rootSignature;
+    ComPtr<ID3D12RootSignature> m_intervalRootSignature;
+    ComPtr<ID3D12RootSignature> m_compositeRootSignature;
     ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
+    ComPtr<ID3D12DescriptorHeap> m_srvHeap;
     ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
-    ComPtr<ID3D12PipelineState> m_pipelineState;
+    ComPtr<ID3D12PipelineState> m_intervalPipelineState;
+    ComPtr<ID3D12PipelineState> m_compositePipelineState;
+    ComPtr<ID3D12Resource> m_intervalRT;
+    ComPtr<ID3D12Resource> m_opticalDepthRT;
+    ComPtr<ID3D12Resource> m_constantBuffer;
+    UINT m_srvDescriptorSize;
     UINT m_rtvDescriptorSize;
+    UINT64 m_cbStride = 0;
 
     ComPtr<ID3D12GraphicsCommandList6> m_commandList;
     SceneConstantBuffer m_constantBufferData;
@@ -55,7 +69,7 @@ private:
 
     float m_cameraAngle;
     float m_cameraDistance;
-    bool m_showDepthMode;
+    bool m_randomizeDrawOrder;
 
     // Synchronization objects
     UINT m_frameIndex;
@@ -63,6 +77,20 @@ private:
     ComPtr<ID3D12Fence> m_fence;
     UINT64 m_fenceValues[FrameCount];
 
+    // Mesh data
+    std::vector<XMFLOAT4> m_vertices;
+    std::vector<uint32_t> m_tetIndices;
+    ComPtr<ID3D12Resource> m_vertexBuffer;
+    ComPtr<ID3D12Resource> m_tetBuffer;
+    uint8_t* m_tetBufferMapped = nullptr;
+
+    bool LoadTetrahedralMesh(const std::wstring& path);
+    void CreateIntervalTargets();
+    void CreateSrvHeap();
+    void BuildIntervalPipelineState();
+    void BuildCompositePipelineState();
+    void UploadBuffer(ID3D12Resource** destination, const void* data, size_t byteSize);
+    void UpdateConstants();
     void LoadPipeline();
     void LoadAssets();
     void PopulateCommandList();
