@@ -27,6 +27,7 @@ struct ProxyVertex
 {
     float4 Position : SV_Position;
     float4 Depths   : TEXCOORD0; // frontZ, frontW, backZ, backW
+    float2 NDC      : TEXCOORD1;
 };
 
 struct PSOutput
@@ -42,8 +43,9 @@ PSOutput main(ProxyVertex input)
 
     float frontW = input.Depths.y;
     float backW  = input.Depths.w;
-    float2 clipXYFront = input.Position.xy * frontW;
-    float2 clipXYBack  = input.Position.xy * backW;
+    // Use explicit NDC passed from Mesh Shader, as SV_Position is in Screen Space (Pixels)
+    float2 clipXYFront = input.NDC * frontW;
+    float2 clipXYBack  = input.NDC * backW;
     float4 clipFront = float4(clipXYFront, input.Depths.x, frontW);
     float4 clipBack  = float4(clipXYBack,  input.Depths.z, backW);
 

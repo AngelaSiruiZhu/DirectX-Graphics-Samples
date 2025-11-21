@@ -53,6 +53,7 @@ struct ProxyVertex
 {
     float4 Position : SV_Position;
     float4 Depths   : TEXCOORD0;
+    float2 NDC      : TEXCOORD1;
 };
 
 static const int2 edges[6] = {
@@ -415,6 +416,7 @@ void main(
         {
             verts[vOffset + j].Position = float4(proxies[i].ndc[j], 0.0f, 1.0f);
             verts[vOffset + j].Depths = proxies[i].depths[j];
+            verts[vOffset + j].NDC = proxies[i].ndc[j];
         }
 
         if (proxies[i].pointCount == 4)

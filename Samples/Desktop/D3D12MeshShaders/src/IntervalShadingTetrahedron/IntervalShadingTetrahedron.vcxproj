@@ -99,10 +99,26 @@
     <ClInclude Include="Win32Application.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="IntervalShadingMS.hlsl" />
-    <None Include="IntervalShadingPS.hlsl" />
-    <None Include="IntervalCompositePS.hlsl" />
-    <None Include="IntervalCompositeVS.hlsl" />
+    <FxCompile Include="IntervalShadingMS.hlsl">
+      <ShaderType>Mesh</ShaderType>
+      <ShaderModel>6.5</ShaderModel>
+      <ObjectFileOutput>$(OutDir)%(Filename).cso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="IntervalShadingPS.hlsl">
+      <ShaderType>Pixel</ShaderType>
+      <ShaderModel>6.5</ShaderModel>
+      <ObjectFileOutput>$(OutDir)%(Filename).cso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="IntervalCompositePS.hlsl">
+      <ShaderType>Pixel</ShaderType>
+      <ShaderModel>6.5</ShaderModel>
+      <ObjectFileOutput>$(OutDir)%(Filename).cso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="IntervalCompositeVS.hlsl">
+      <ShaderType>Vertex</ShaderType>
+      <ShaderModel>6.5</ShaderModel>
+      <ObjectFileOutput>$(OutDir)%(Filename).cso</ObjectFileOutput>
+    </FxCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

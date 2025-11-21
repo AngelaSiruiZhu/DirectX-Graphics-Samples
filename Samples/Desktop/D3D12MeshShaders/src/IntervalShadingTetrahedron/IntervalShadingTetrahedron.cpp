@@ -21,6 +21,7 @@ using DirectX::XMMatrixInverse;
 namespace
 {
     const wchar_t* kTetPathCandidates[] = {
+        L"..\\..\\..\\..\\Assets\\IntervalShading\\bunny.vtk", // from bin/x64/Debug
         L"..\\..\\..\\Assets\\IntervalShading\\bunny.vtk", // from bin/x64/Config
         L"..\\Assets\\IntervalShading\\bunny.vtk",        // from src folder
         L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\bunny.vtk" // absolute-ish from repo root
@@ -278,6 +279,15 @@ void IntervalShadingTetrahedron::PopulateCommandList()
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
 
     D3D12_RESOURCE_STATES shaderRead = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    auto transitionIf = [&](ComPtr<ID3D12Resource>& res, D3D12_RESOURCE_STATES& state, D3D12_RESOURCE_STATES target)
+    {
+        if (state != target)
+        {
+            CD3DX12_RESOURCE_BARRIER b = CD3DX12_RESOURCE_BARRIER::Transition(res.Get(), state, target);
+            m_commandList->ResourceBarrier(1, &b);
+            state = target;
+        }
+    };
 
     // First pass: interval generation into offscreen RTs
     {
@@ -306,15 +316,6 @@ void IntervalShadingTetrahedron::PopulateCommandList()
         m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
         m_commandList->DispatchMesh(m_constantBufferData.TetCount, 1, 1);
 
-        auto transitionIf = [&](ComPtr<ID3D12Resource>& res, D3D12_RESOURCE_STATES& state, D3D12_RESOURCE_STATES target)
-        {
-            if (state != target)
-            {
-                CD3DX12_RESOURCE_BARRIER b = CD3DX12_RESOURCE_BARRIER::Transition(res.Get(), state, target);
-                m_commandList->ResourceBarrier(1, &b);
-                state = target;
-            }
-        };
         transitionIf(m_frontRT, m_frontState, shaderRead);
         transitionIf(m_backRT, m_backState, shaderRead);
         transitionIf(m_opticalDepthRT, m_opticalState, shaderRead);
@@ -322,6 +323,11 @@ void IntervalShadingTetrahedron::PopulateCommandList()
 
     // Second pass: fullscreen composite to backbuffer
     {
+        // Make sure interval outputs are in SRV state for sampling.
+        transitionIf(m_frontRT, m_frontState, shaderRead);
+        transitionIf(m_backRT,  m_backState,  shaderRead);
+        transitionIf(m_opticalDepthRT, m_opticalState, shaderRead);
+
         CD3DX12_RESOURCE_BARRIER toRT = CD3DX12_RESOURCE_BARRIER::Transition(
             m_renderTargets[m_frameIndex].Get(),
             D3D12_RESOURCE_STATE_PRESENT,
@@ -331,13 +337,15 @@ void IntervalShadingTetrahedron::PopulateCommandList()
         CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
         m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
-        const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        const float clearColor[] = { 0.0f, 1.0f, 0.0f, 1.0f };
         m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
         m_commandList->SetGraphicsRootSignature(m_compositeRootSignature.Get());
         m_commandList->SetPipelineState(m_compositePipelineState.Get());
         m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
-        m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
+        // Front/back/optical are at SRV heap indices 2/3/4 (t2/t3/t4).
+        CD3DX12_GPU_DESCRIPTOR_HANDLE frontSrv(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), 2, m_srvDescriptorSize);
+        m_commandList->SetGraphicsRootDescriptorTable(1, frontSrv);
 
         m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         m_commandList->DrawInstanced(3, 1, 0, 0);
@@ -563,7 +571,7 @@ void IntervalShadingTetrahedron::BuildIntervalPipelineState()
     std::vector<BYTE> pixelShader = ReadData(L"IntervalShadingPS.cso");
 
     CD3DX12_DESCRIPTOR_RANGE1 range;
-    range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0);
+    range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0); // vertices, tets
 
     CD3DX12_ROOT_PARAMETER1 params[2];
     params[0].InitAsConstantBufferView(0);
@@ -580,6 +588,7 @@ void IntervalShadingTetrahedron::BuildIntervalPipelineState()
     ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_intervalRootSignature)));
 
     CD3DX12_BLEND_DESC blend(D3D12_DEFAULT);
+    blend.IndependentBlendEnable = TRUE;
     // Front min
     blend.RenderTarget[0].BlendEnable = TRUE;
     blend.RenderTarget[0].BlendOp = D3D12_BLEND_OP_MIN;
@@ -633,7 +642,9 @@ void IntervalShadingTetrahedron::BuildIntervalPipelineState()
     psoStream.MS = CD3DX12_SHADER_BYTECODE(meshShader.data(), meshShader.size());
     psoStream.PS = CD3DX12_SHADER_BYTECODE(pixelShader.data(), pixelShader.size());
     psoStream.BlendState = blend;
-    psoStream.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    CD3DX12_RASTERIZER_DESC rasterizer(D3D12_DEFAULT);
+    rasterizer.CullMode = D3D12_CULL_MODE_NONE;
+    psoStream.RasterizerState = rasterizer;
     psoStream.DepthStencilState = depth;
     psoStream.RTVFormats = rtvFormats;
     psoStream.DSVFormat = DXGI_FORMAT_D32_FLOAT;
@@ -651,7 +662,23 @@ void IntervalShadingTetrahedron::BuildCompositePipelineState()
     std::vector<BYTE> vs = ReadData(L"IntervalCompositeVS.cso");
     std::vector<BYTE> ps = ReadData(L"IntervalCompositePS.cso");
 
-    m_compositeRootSignature = m_intervalRootSignature;
+    // Root signature for composite: CBV + SRVs for front/back/optical + sampler.
+    CD3DX12_DESCRIPTOR_RANGE1 range;
+    range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 2); // t2,t3,t4
+
+    CD3DX12_ROOT_PARAMETER1 params[2];
+    params[0].InitAsConstantBufferView(0);
+    params[1].InitAsDescriptorTable(1, &range, D3D12_SHADER_VISIBILITY_PIXEL);
+
+    CD3DX12_STATIC_SAMPLER_DESC sampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rsDesc;
+    rsDesc.Init_1_1(_countof(params), params, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+    ComPtr<ID3DBlob> signature;
+    ComPtr<ID3DBlob> error;
+    ThrowIfFailed(D3D12SerializeVersionedRootSignature(&rsDesc, &signature, &error));
+    ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_compositeRootSignature)));
 
     // We consume three SRVs (front/back/optical) and output final color.
     D3D12_RT_FORMAT_ARRAY rtvFormats = {};
@@ -681,7 +708,9 @@ void IntervalShadingTetrahedron::BuildCompositePipelineState()
     psoStream.VS = CD3DX12_SHADER_BYTECODE(vs.data(), vs.size());
     psoStream.PS = CD3DX12_SHADER_BYTECODE(ps.data(), ps.size());
     psoStream.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-    psoStream.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    CD3DX12_RASTERIZER_DESC compRasterizer(D3D12_DEFAULT);
+    compRasterizer.CullMode = D3D12_CULL_MODE_NONE;
+    psoStream.RasterizerState = compRasterizer;
     psoStream.DepthStencilState = depth;
     psoStream.RTVFormats = rtvFormats;
     psoStream.DSVFormat = DXGI_FORMAT_UNKNOWN;

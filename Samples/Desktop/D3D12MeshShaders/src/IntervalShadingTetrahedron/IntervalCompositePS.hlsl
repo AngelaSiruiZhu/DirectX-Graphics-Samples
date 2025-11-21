@@ -35,9 +35,8 @@ struct PSIn
 
 float3 DepthToGray(float d)
 {
-    float v = saturate(d * 0.05f);
-    v = 1.0f - v;
-    v = v * 0.9f + 0.1f;
+    // Visualize depth as a repeating gradient to see shape details
+    float v = frac(d * 0.5f); 
     return float3(v, v, v);
 }
 
