@@ -282,15 +282,6 @@ void IntervalShadingTetrahedron::PopulateCommandList()
     // First pass: interval generation into offscreen RTs
     {
         // Bring interval targets to RT state for this frame.
-        auto transitionIf = [&](ComPtr<ID3D12Resource>& res, D3D12_RESOURCE_STATES& state, D3D12_RESOURCE_STATES target)
-        {
-            if (state != target)
-            {
-                CD3DX12_RESOURCE_BARRIER b = CD3DX12_RESOURCE_BARRIER::Transition(res.Get(), state, target);
-                m_commandList->ResourceBarrier(1, &b);
-                state = target;
-            }
-        };
         transitionIf(m_frontRT, m_frontState, D3D12_RESOURCE_STATE_RENDER_TARGET);
         transitionIf(m_backRT, m_backState, D3D12_RESOURCE_STATE_RENDER_TARGET);
         transitionIf(m_opticalDepthRT, m_opticalState, D3D12_RESOURCE_STATE_RENDER_TARGET);
