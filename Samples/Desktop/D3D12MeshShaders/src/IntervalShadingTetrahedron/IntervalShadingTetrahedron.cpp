@@ -281,24 +281,23 @@ void IntervalShadingTetrahedron::PopulateCommandList()
 
     // First pass: interval generation into offscreen RTs
     {
-        // Bring interval targets back to RT state for this frame.
-        CD3DX12_RESOURCE_BARRIER toRTBegin[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_frontRT.Get(), shaderRead, D3D12_RESOURCE_STATE_RENDER_TARGET),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_backRT.Get(), shaderRead, D3D12_RESOURCE_STATE_RENDER_TARGET),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_opticalDepthRT.Get(), shaderRead, D3D12_RESOURCE_STATE_RENDER_TARGET)
+        // Bring interval targets to RT state for this frame.
+        auto transitionIf = [&](ComPtr<ID3D12Resource>& res, D3D12_RESOURCE_STATES& state, D3D12_RESOURCE_STATES target)
+        {
+            if (state != target)
+            {
+                CD3DX12_RESOURCE_BARRIER b = CD3DX12_RESOURCE_BARRIER::Transition(res.Get(), state, target);
+                m_commandList->ResourceBarrier(1, &b);
+                state = target;
+            }
         };
-        m_commandList->ResourceBarrier(_countof(toRTBegin), toRTBegin);
+        transitionIf(m_frontRT, m_frontState, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        transitionIf(m_backRT, m_backState, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        transitionIf(m_opticalDepthRT, m_opticalState, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
         CD3DX12_CPU_DESCRIPTOR_HANDLE frontHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount, m_rtvDescriptorSize);
         CD3DX12_CPU_DESCRIPTOR_HANDLE backHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount + 1, m_rtvDescriptorSize);
         CD3DX12_CPU_DESCRIPTOR_HANDLE opticalHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount + 2, m_rtvDescriptorSize);
-
-        CD3DX12_RESOURCE_BARRIER toRTs[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_frontRT.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_backRT.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_opticalDepthRT.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET)
-        };
-        m_commandList->ResourceBarrier(_countof(toRTs), toRTs);
 
         D3D12_CPU_DESCRIPTOR_HANDLE rtHandles[] = { frontHandle, backHandle, opticalHandle };
         m_commandList->OMSetRenderTargets(_countof(rtHandles), rtHandles, FALSE, nullptr);
