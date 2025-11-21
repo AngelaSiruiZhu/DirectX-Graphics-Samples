@@ -12,6 +12,7 @@
 #include <numeric>
 #include <cstring>
 #include <stdexcept>
+#include <cfloat>
 #undef min
 #undef max
 
@@ -276,8 +277,18 @@ void IntervalShadingTetrahedron::PopulateCommandList()
     m_commandList->RSSetViewports(1, &m_viewport);
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
 
+    D3D12_RESOURCE_STATES shaderRead = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+
     // First pass: interval generation into offscreen RTs
     {
+        // Bring interval targets back to RT state for this frame.
+        CD3DX12_RESOURCE_BARRIER toRTBegin[] = {
+            CD3DX12_RESOURCE_BARRIER::Transition(m_frontRT.Get(), shaderRead, D3D12_RESOURCE_STATE_RENDER_TARGET),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_backRT.Get(), shaderRead, D3D12_RESOURCE_STATE_RENDER_TARGET),
+            CD3DX12_RESOURCE_BARRIER::Transition(m_opticalDepthRT.Get(), shaderRead, D3D12_RESOURCE_STATE_RENDER_TARGET)
+        };
+        m_commandList->ResourceBarrier(_countof(toRTBegin), toRTBegin);
+
         CD3DX12_CPU_DESCRIPTOR_HANDLE frontHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount, m_rtvDescriptorSize);
         CD3DX12_CPU_DESCRIPTOR_HANDLE backHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount + 1, m_rtvDescriptorSize);
         CD3DX12_CPU_DESCRIPTOR_HANDLE opticalHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount + 2, m_rtvDescriptorSize);
@@ -292,10 +303,12 @@ void IntervalShadingTetrahedron::PopulateCommandList()
         D3D12_CPU_DESCRIPTOR_HANDLE rtHandles[] = { frontHandle, backHandle, opticalHandle };
         m_commandList->OMSetRenderTargets(_countof(rtHandles), rtHandles, FALSE, nullptr);
 
-        const float clearInterval[4] = { 0, 0, 0, 0 };
-        m_commandList->ClearRenderTargetView(frontHandle, clearInterval, 0, nullptr);
-        m_commandList->ClearRenderTargetView(backHandle, clearInterval, 0, nullptr);
-        m_commandList->ClearRenderTargetView(opticalHandle, clearInterval, 0, nullptr);
+        const float clearFront[4] = { FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX };
+        const float clearBack[4]  = { 0, 0, 0, 0 };
+        const float clearOptical[4] = { 0, 0, 0, 0 };
+        m_commandList->ClearRenderTargetView(frontHandle, clearFront, 0, nullptr);
+        m_commandList->ClearRenderTargetView(backHandle, clearBack, 0, nullptr);
+        m_commandList->ClearRenderTargetView(opticalHandle, clearOptical, 0, nullptr);
 
         m_commandList->SetGraphicsRootSignature(m_intervalRootSignature.Get());
         m_commandList->SetPipelineState(m_intervalPipelineState.Get());
@@ -303,12 +316,18 @@ void IntervalShadingTetrahedron::PopulateCommandList()
         m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
         m_commandList->DispatchMesh(m_constantBufferData.TetCount, 1, 1);
 
-        CD3DX12_RESOURCE_BARRIER toSRV[] = {
-            CD3DX12_RESOURCE_BARRIER::Transition(m_frontRT.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_backRT.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
-            CD3DX12_RESOURCE_BARRIER::Transition(m_opticalDepthRT.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
+        auto transitionIf = [&](ComPtr<ID3D12Resource>& res, D3D12_RESOURCE_STATES& state, D3D12_RESOURCE_STATES target)
+        {
+            if (state != target)
+            {
+                CD3DX12_RESOURCE_BARRIER b = CD3DX12_RESOURCE_BARRIER::Transition(res.Get(), state, target);
+                m_commandList->ResourceBarrier(1, &b);
+                state = target;
+            }
         };
-        m_commandList->ResourceBarrier(_countof(toSRV), toSRV);
+        transitionIf(m_frontRT, m_frontState, shaderRead);
+        transitionIf(m_backRT, m_backState, shaderRead);
+        transitionIf(m_opticalDepthRT, m_opticalState, shaderRead);
     }
 
     // Second pass: fullscreen composite to backbuffer
@@ -460,7 +479,8 @@ void IntervalShadingTetrahedron::CreateIntervalTargets()
         D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
     D3D12_CLEAR_VALUE frontClear = {};
     frontClear.Format = frontDesc.Format;
-    frontClear.Color[0] = frontClear.Color[1] = frontClear.Color[2] = frontClear.Color[3] = 0.0f;
+    // Clear to large value so MIN blending stores the nearest front depth
+    frontClear.Color[0] = frontClear.Color[1] = frontClear.Color[2] = frontClear.Color[3] = FLT_MAX;
 
     ThrowIfFailed(m_device->CreateCommittedResource(
         &heap,
@@ -472,9 +492,12 @@ void IntervalShadingTetrahedron::CreateIntervalTargets()
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE frontHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount, m_rtvDescriptorSize);
     m_device->CreateRenderTargetView(m_frontRT.Get(), nullptr, frontHandle);
+    m_frontState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
     auto backDesc = frontDesc;
-    D3D12_CLEAR_VALUE backClear = frontClear;
+    D3D12_CLEAR_VALUE backClear = {};
+    backClear.Format = backDesc.Format;
+    backClear.Color[0] = backClear.Color[1] = backClear.Color[2] = backClear.Color[3] = 0.0f;
     ThrowIfFailed(m_device->CreateCommittedResource(
         &heap,
         D3D12_HEAP_FLAG_NONE,
@@ -484,6 +507,7 @@ void IntervalShadingTetrahedron::CreateIntervalTargets()
         IID_PPV_ARGS(&m_backRT)));
     CD3DX12_CPU_DESCRIPTOR_HANDLE backHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount + 1, m_rtvDescriptorSize);
     m_device->CreateRenderTargetView(m_backRT.Get(), nullptr, backHandle);
+    m_backState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 
     auto opticalDesc = CD3DX12_RESOURCE_DESC::Tex2D(
         DXGI_FORMAT_R16_FLOAT,
@@ -505,6 +529,7 @@ void IntervalShadingTetrahedron::CreateIntervalTargets()
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE opticalHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), FrameCount + 2, m_rtvDescriptorSize);
     m_device->CreateRenderTargetView(m_opticalDepthRT.Get(), nullptr, opticalHandle);
+    m_opticalState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 }
 
 void IntervalShadingTetrahedron::CreateSrvHeap()

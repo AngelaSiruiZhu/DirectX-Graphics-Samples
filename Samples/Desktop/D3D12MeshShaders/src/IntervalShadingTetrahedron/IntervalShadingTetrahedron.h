@@ -59,6 +59,9 @@ private:
     ComPtr<ID3D12Resource> m_frontRT;
     ComPtr<ID3D12Resource> m_backRT;
     ComPtr<ID3D12Resource> m_opticalDepthRT;
+    D3D12_RESOURCE_STATES m_frontState;
+    D3D12_RESOURCE_STATES m_backState;
+    D3D12_RESOURCE_STATES m_opticalState;
     ComPtr<ID3D12Resource> m_constantBuffer;
     UINT m_srvDescriptorSize;
     UINT m_rtvDescriptorSize;
