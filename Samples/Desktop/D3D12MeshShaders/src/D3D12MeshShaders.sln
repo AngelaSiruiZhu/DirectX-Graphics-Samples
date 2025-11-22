@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.29905.134
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11217.181 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "D3D12MeshletRender", "MeshletRender\D3D12MeshletRender.vcxproj", "{DECD10D0-A6F7-42F7-9DA6-2F5D49E13C3E}"
 EndProject
@@ -18,6 +18,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "D3D12WavefrontConverter", "
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "D3D12MeshletGenerator", "MeshletGenerator\D3D12MeshletGenerator.vcxproj", "{265611FB-24A4-4FD0-B604-CD27089FC1DA}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "IntervalShadingTetrahedron", "IntervalShadingTetrahedron\IntervalShadingTetrahedron.vcxproj", "{6F3A7C5B-8D4E-4A9F-B2E1-3C7D8E9F0A1B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -32,6 +34,14 @@ Global
 		{759F6318-300C-43D7-A6D7-EC6F98ACC070}.Debug|x64.Build.0 = Debug|x64
 		{759F6318-300C-43D7-A6D7-EC6F98ACC070}.Release|x64.ActiveCfg = Release|x64
 		{759F6318-300C-43D7-A6D7-EC6F98ACC070}.Release|x64.Build.0 = Release|x64
+		{142428ED-B5C7-4BAD-88E4-4AF34BD9D48A}.Debug|x64.ActiveCfg = Debug|x64
+		{142428ED-B5C7-4BAD-88E4-4AF34BD9D48A}.Debug|x64.Build.0 = Debug|x64
+		{142428ED-B5C7-4BAD-88E4-4AF34BD9D48A}.Release|x64.ActiveCfg = Release|x64
+		{142428ED-B5C7-4BAD-88E4-4AF34BD9D48A}.Release|x64.Build.0 = Release|x64
+		{7794C60A-1871-4558-A982-95D627E42CDF}.Debug|x64.ActiveCfg = Debug|x64
+		{7794C60A-1871-4558-A982-95D627E42CDF}.Debug|x64.Build.0 = Debug|x64
+		{7794C60A-1871-4558-A982-95D627E42CDF}.Release|x64.ActiveCfg = Release|x64
+		{7794C60A-1871-4558-A982-95D627E42CDF}.Release|x64.Build.0 = Release|x64
 		{D4DBD8B1-49CA-4BC3-87E1-9128CF8F1126}.Debug|x64.ActiveCfg = Debug|x64
 		{D4DBD8B1-49CA-4BC3-87E1-9128CF8F1126}.Debug|x64.Build.0 = Debug|x64
 		{D4DBD8B1-49CA-4BC3-87E1-9128CF8F1126}.Release|x64.ActiveCfg = Release|x64
@@ -40,18 +50,10 @@ Global
 		{265611FB-24A4-4FD0-B604-CD27089FC1DA}.Debug|x64.Build.0 = Debug|x64
 		{265611FB-24A4-4FD0-B604-CD27089FC1DA}.Release|x64.ActiveCfg = Release|x64
 		{265611FB-24A4-4FD0-B604-CD27089FC1DA}.Release|x64.Build.0 = Release|x64
-		{142428ED-B5C7-4BAD-88E4-4AF34BD9D48A}.Debug|x64.ActiveCfg = Debug|x64
-		{142428ED-B5C7-4BAD-88E4-4AF34BD9D48A}.Debug|x64.Build.0 = Debug|x64
-		{142428ED-B5C7-4BAD-88E4-4AF34BD9D48A}.Release|x64.ActiveCfg = Release|x64
-		{142428ED-B5C7-4BAD-88E4-4AF34BD9D48A}.Release|x64.Build.0 = Release|x64
-		{DECD10D0-A6F7-42F7-9DA6-2F5D49E13C3E}.Debug|x64.ActiveCfg = Debug|x64
-		{DECD10D0-A6F7-42F7-9DA6-2F5D49E13C3E}.Debug|x64.Build.0 = Debug|x64
-		{DECD10D0-A6F7-42F7-9DA6-2F5D49E13C3E}.Release|x64.ActiveCfg = Release|x64
-		{DECD10D0-A6F7-42F7-9DA6-2F5D49E13C3E}.Release|x64.Build.0 = Release|x64
-		{7794C60A-1871-4558-A982-95D627E42CDF}.Debug|x64.ActiveCfg = Debug|x64
-		{7794C60A-1871-4558-A982-95D627E42CDF}.Debug|x64.Build.0 = Debug|x64
-		{7794C60A-1871-4558-A982-95D627E42CDF}.Release|x64.ActiveCfg = Release|x64
-		{7794C60A-1871-4558-A982-95D627E42CDF}.Release|x64.Build.0 = Release|x64
+		{6F3A7C5B-8D4E-4A9F-B2E1-3C7D8E9F0A1B}.Debug|x64.ActiveCfg = Debug|x64
+		{6F3A7C5B-8D4E-4A9F-B2E1-3C7D8E9F0A1B}.Debug|x64.Build.0 = Debug|x64
+		{6F3A7C5B-8D4E-4A9F-B2E1-3C7D8E9F0A1B}.Release|x64.ActiveCfg = Release|x64
+		{6F3A7C5B-8D4E-4A9F-B2E1-3C7D8E9F0A1B}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

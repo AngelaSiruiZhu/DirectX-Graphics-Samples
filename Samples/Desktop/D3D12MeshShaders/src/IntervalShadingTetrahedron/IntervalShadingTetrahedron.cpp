@@ -39,6 +39,7 @@ IntervalShadingTetrahedron::IntervalShadingTetrahedron(UINT width, UINT height, 
     m_rtvDescriptorSize(0),
     m_cbvDataBegin(nullptr),
     m_cameraAngle(0.0f),
+    m_cameraElevation(0.35f),
     m_cameraDistance(5.0f),
     m_randomizeDrawOrder(false)
 {
@@ -385,6 +386,8 @@ void IntervalShadingTetrahedron::OnKeyDown(UINT8 key)
 
     case VK_LEFT:  m_cameraAngle -= rotationSpeed; break;
     case VK_RIGHT: m_cameraAngle += rotationSpeed; break;
+    case VK_UP:    m_cameraElevation += rotationSpeed; break;
+    case VK_DOWN:  m_cameraElevation -= rotationSpeed; break;
     case 'W': case 'w': m_cameraDistance = (std::max)(1.5f, m_cameraDistance - zoomSpeed); break;
     case 'S': case 's': m_cameraDistance = (std::min)(15.0f, m_cameraDistance + zoomSpeed); break;
     }
@@ -394,6 +397,12 @@ void IntervalShadingTetrahedron::OnKeyDown(UINT8 key)
         m_cameraAngle -= XM_2PI;
     if (m_cameraAngle < 0)
         m_cameraAngle += XM_2PI;
+    
+    // Keep elevation in valid range (0 to 2PI) for seamless rotation
+    if (m_cameraElevation > XM_2PI)
+        m_cameraElevation -= XM_2PI;
+    if (m_cameraElevation < 0)
+        m_cameraElevation += XM_2PI;
 }
 
 bool IntervalShadingTetrahedron::LoadTetrahedralMesh(const std::wstring& path)
@@ -425,10 +434,10 @@ bool IntervalShadingTetrahedron::LoadTetrahedralMesh(const std::wstring& path)
             std::stringstream ss(line.substr(2));
             uint32_t a, b, c, d;
             ss >> a >> b >> c >> d;
-            m_tetIndices.push_back(a - 1);
-            m_tetIndices.push_back(b - 1);
-            m_tetIndices.push_back(c - 1);
-            m_tetIndices.push_back(d - 1);
+            m_tetIndices.push_back(a);
+            m_tetIndices.push_back(b);
+            m_tetIndices.push_back(c);
+            m_tetIndices.push_back(d);
         }
     }
 
@@ -745,13 +754,19 @@ void IntervalShadingTetrahedron::UploadBuffer(ID3D12Resource** destination, cons
 
 void IntervalShadingTetrahedron::UpdateConstants()
 {
-    XMVECTOR cameraPos = XMVectorSet(
-        m_cameraDistance * cosf(m_cameraAngle),
-        m_cameraDistance * 0.35f,
-        m_cameraDistance * sinf(m_cameraAngle),
-        1.0f);
+    float y = m_cameraDistance * sinf(m_cameraElevation);
+    float r = m_cameraDistance * cosf(m_cameraElevation);
+    float x = r * cosf(m_cameraAngle);
+    float z = r * sinf(m_cameraAngle);
+
+    XMVECTOR cameraPos = XMVectorSet(x, y, z, 1.0f);
     XMVECTOR target = XMVectorZero();
     XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+    if (cosf(m_cameraElevation) < 0.0f)
+    {
+        up = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
+    }
 
     XMMATRIX model = XMMatrixIdentity();
     XMMATRIX view = XMMatrixLookAtLH(cameraPos, target, up);

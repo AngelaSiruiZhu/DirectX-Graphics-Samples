@@ -72,6 +72,7 @@ private:
     UINT8* m_cbvDataBegin;
 
     float m_cameraAngle;
+    float m_cameraElevation;
     float m_cameraDistance;
     bool m_randomizeDrawOrder;
 
