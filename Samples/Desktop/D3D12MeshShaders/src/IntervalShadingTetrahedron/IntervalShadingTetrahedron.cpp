@@ -315,7 +315,7 @@ void IntervalShadingTetrahedron::PopulateCommandList()
         m_commandList->SetPipelineState(m_intervalPipelineState.Get());
         m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
         m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
-        m_commandList->DispatchMesh(m_constantBufferData.TetCount, 1, 1);
+        m_commandList->DispatchMesh((m_constantBufferData.TetCount + 15) / 16, 1, 1);
 
         transitionIf(m_frontRT, m_frontState, shaderRead);
         transitionIf(m_backRT, m_backState, shaderRead);

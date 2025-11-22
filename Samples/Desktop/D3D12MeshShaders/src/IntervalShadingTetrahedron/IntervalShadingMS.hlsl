@@ -256,15 +256,16 @@ bool LineIntersection(float2 L1A, float2 L1B, float2 L2A, float2 L2B, out float2
     return false;
 }
 
-[NumThreads(1, 1, 1)]
+[NumThreads(16, 1, 1)]
 [OutputTopology("triangle")]
 void main(
     uint3 gid : SV_GroupID,
-    out indices uint3 tris[80],
-    out vertices ProxyVertex verts[80]
+    uint3 gtid : SV_GroupThreadID,
+    out indices uint3 tris[192],
+    out vertices ProxyVertex verts[240]
 )
 {
-    uint tetIndex = gid.x;
+    uint tetIndex = gid.x * 16 + gtid.x;
     Tet tet = (Tet)0;
     ClippedTets clipped = (ClippedTets)0;
     Proxy proxies[3];
@@ -404,34 +405,41 @@ void main(
         }
     }
 
-    SetMeshOutputCounts(vertexCounter, triCounter);
+    uint vOffset = WavePrefixSum(vertexCounter);
+    uint tOffset = WavePrefixSum(triCounter);
+    uint totalVertices = WaveActiveSum(vertexCounter);
+    uint totalTris = WaveActiveSum(triCounter);
+
+    SetMeshOutputCounts(totalVertices, totalTris);
+
     if (vertexCounter == 0 || triCounter == 0 || tetIndex >= Globals.TetCount)
         return;
 
-    uint vOffset = 0;
-    uint tOffset = 0;
+    uint currentV = vOffset;
+    uint currentT = tOffset;
+
     for (int i = 0; i < clipped.count; ++i)
     {
         for (int j = 0; j < proxies[i].pointCount; ++j)
         {
-            verts[vOffset + j].Position = float4(proxies[i].ndc[j], 0.0f, 1.0f);
-            verts[vOffset + j].Depths = proxies[i].depths[j];
-            verts[vOffset + j].NDC = proxies[i].ndc[j];
+            verts[currentV + j].Position = float4(proxies[i].ndc[j], 0.0f, 1.0f);
+            verts[currentV + j].Depths = proxies[i].depths[j];
+            verts[currentV + j].NDC = proxies[i].ndc[j];
         }
 
         if (proxies[i].pointCount == 4)
         {
-            tris[tOffset++] = uint3(0, 1, 3) + vOffset;
-            tris[tOffset++] = uint3(1, 2, 3) + vOffset;
-            tris[tOffset++] = uint3(2, 0, 3) + vOffset;
+            tris[currentT++] = uint3(0, 1, 3) + currentV;
+            tris[currentT++] = uint3(1, 2, 3) + currentV;
+            tris[currentT++] = uint3(2, 0, 3) + currentV;
         }
         else if (proxies[i].pointCount == 5)
         {
-            tris[tOffset++] = uint3(0, 1, 4) + vOffset;
-            tris[tOffset++] = uint3(1, 2, 4) + vOffset;
-            tris[tOffset++] = uint3(2, 3, 4) + vOffset;
-            tris[tOffset++] = uint3(3, 0, 4) + vOffset;
+            tris[currentT++] = uint3(0, 1, 4) + currentV;
+            tris[currentT++] = uint3(1, 2, 4) + currentV;
+            tris[currentT++] = uint3(2, 3, 4) + currentV;
+            tris[currentT++] = uint3(3, 0, 4) + currentV;
         }
-        vOffset += proxies[i].pointCount;
+        currentV += proxies[i].pointCount;
     }
 }
