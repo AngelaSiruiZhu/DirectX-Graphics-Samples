@@ -15,6 +15,7 @@ struct Constants
     uint TetCount;
     uint RandomizeOrder;
     float3 CameraPos;
+    float Time;
 };
 
 cbuffer SceneConstants : register(b0)
@@ -49,16 +50,31 @@ float noise(float3 x) {
                      lerp(hash(i + float3(0,1,1)), hash(i + float3(1,1,1)), f.x), f.y), f.z);
 }
 
-float fbm(float3 x) {
-    float v = 0.0;
-    float a = 0.5;
-    float3 shift = float3(100, 100, 100);
-    for (int i = 0; i < 4; ++i) {
-        v += a * noise(x);
-        x = x * 2.0 + shift;
-        a *= 0.5;
+float fbm(float3 p) {
+    float f = 0.0;
+    float w = 0.5;
+    for (int i = 0; i < 5; i++) {
+        f += w * noise(p);
+        p *= 2.0;
+        w *= 0.5;
     }
-    return v;
+    return f;
+}
+
+float GetDensity(float3 p) {
+    float d = fbm(p * 1.5 + float3(0, 0, Globals.Time * 0.1));
+    return saturate(d - 0.2);
+}
+
+float GetLight(float3 p, float3 lightDir) {
+    float lightDensity = 0.0;
+    float step = 0.2;
+    for(int i=0; i<4; i++) {
+        p += lightDir * step;
+        lightDensity += GetDensity(p);
+    }
+    float transmission = exp(-lightDensity * 1.5);
+    return transmission * (1.0 - exp(-lightDensity * 4.0)) * 2.0;
 }
 
 float3 DepthToGray(float d)
@@ -123,28 +139,37 @@ float4 main(PSIn input) : SV_Target
         
         float3 rayDir = normalize(worldFar.xyz - Globals.CameraPos);
         
-        float3 startPos = Globals.CameraPos + rayDir * front;
-        float3 endPos = Globals.CameraPos + rayDir * back;
+        float dist = front;
+        float stepSize = 0.05;
         
-        float dist = back - front;
-        float stepSize = 0.05; // Adjust for quality vs perf
-        int steps = int(dist / stepSize);
-        steps = min(steps, 64); // Safety limit
+        float totalTransmittance = 1.0;
+        float3 totalLightEnergy = 0.0;
         
-        float totalDensity = 0;
-        float3 currentPos = startPos;
-        
-        for(int i=0; i<steps; ++i) {
-            float d = fbm(currentPos * 3.0 + float3(0, 0, 0)); // Scale noise
-            totalDensity += d * stepSize;
-            currentPos += rayDir * stepSize;
+        float3 sunColor = float3(1.0, 0.9, 0.7) * 1.5;
+        float3 ambientColor = float3(0.6, 0.7, 0.9) * 0.3;
+        float3 lightDir = float3(0.0, 1.0, 0.0);
+
+        for (int i = 0; i < 64; i++) {
+            if (dist >= back || totalTransmittance < 0.01) break;
+
+            float3 p = Globals.CameraPos + rayDir * dist;
+            float density = GetDensity(p);
+
+            if (density > 0.001) {
+                float lightTransmittance = GetLight(p, lightDir);
+                float3 light = sunColor * lightTransmittance + ambientColor;
+                float stepTransmittance = exp(-density * stepSize * 5.0);
+                float3 absorbedLight = light * (1.0 - stepTransmittance) * totalTransmittance;
+                
+                totalLightEnergy += absorbedLight;
+                totalTransmittance *= stepTransmittance;
+            }
+
+            dist += stepSize;
         }
         
-        float transmittance = exp(-totalDensity * 5.0); // Density factor
-        float3 cloudColor = float3(1.0, 1.0, 1.0);
         float3 skyColor = float3(0.5, 0.7, 1.0);
-        
-        color = lerp(cloudColor, skyColor, transmittance);
+        color = totalLightEnergy + skyColor * totalTransmittance;
         alpha = 1.0f;
         break;
     }

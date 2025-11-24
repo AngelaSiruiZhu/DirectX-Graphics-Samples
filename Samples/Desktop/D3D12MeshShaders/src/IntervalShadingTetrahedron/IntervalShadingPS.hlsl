@@ -16,6 +16,7 @@ struct Constants
     uint TetCount;
     uint RandomizeOrder;
     float3 CameraPos;
+    float Time;
 };
 
 cbuffer SceneConstants : register(b0)

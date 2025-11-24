@@ -38,6 +38,7 @@ private:
         uint32_t TetCount;
         uint32_t RandomizeOrder;
         XMFLOAT3 CameraPos;
+        float Time;
     };
 
     // Pipeline objects

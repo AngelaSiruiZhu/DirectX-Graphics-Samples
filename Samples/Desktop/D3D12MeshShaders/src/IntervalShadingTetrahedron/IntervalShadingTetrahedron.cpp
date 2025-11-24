@@ -405,6 +405,21 @@ void IntervalShadingTetrahedron::OnKeyDown(UINT8 key)
         m_cameraElevation += XM_2PI;
 }
 
+// Helper to get time
+static double GetTime()
+{
+    static LARGE_INTEGER start = { 0 };
+    static LARGE_INTEGER freq = { 0 };
+    if (start.QuadPart == 0)
+    {
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&start);
+    }
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    return static_cast<double>(now.QuadPart - start.QuadPart) / freq.QuadPart;
+}
+
 bool IntervalShadingTetrahedron::LoadTetrahedralMesh(const std::wstring& path)
 {
     m_vertices.clear();
@@ -784,6 +799,7 @@ void IntervalShadingTetrahedron::UpdateConstants()
     m_constantBufferData.TetCount = static_cast<uint32_t>(m_tetIndices.size() / 4);
     m_constantBufferData.RandomizeOrder = m_randomizeDrawOrder ? 1u : 0u;
     XMStoreFloat3(&m_constantBufferData.CameraPos, cameraPos);
+    m_constantBufferData.Time = static_cast<float>(GetTime());
 
     std::memcpy(m_cbvDataBegin + m_cbStride * m_frameIndex, &m_constantBufferData, sizeof(m_constantBufferData));
 }
