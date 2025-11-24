@@ -14,7 +14,7 @@ struct Constants
     uint DebugMode;
     uint TetCount;
     uint RandomizeOrder;
-    float3 Padding;
+    float3 CameraPos;
 };
 
 cbuffer SceneConstants : register(b0)
@@ -32,6 +32,34 @@ struct PSIn
     float4 Position : SV_Position;
     float2 Tex      : TEXCOORD0;
 };
+
+float hash(float3 p) {
+    p = frac(p * 0.3183099 + .1);
+    p *= 17.0;
+    return frac(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise(float3 x) {
+    float3 i = floor(x);
+    float3 f = frac(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return lerp(lerp(lerp(hash(i + float3(0,0,0)), hash(i + float3(1,0,0)), f.x),
+                     lerp(hash(i + float3(0,1,0)), hash(i + float3(1,1,0)), f.x), f.y),
+                lerp(lerp(hash(i + float3(0,0,1)), hash(i + float3(1,0,1)), f.x),
+                     lerp(hash(i + float3(0,1,1)), hash(i + float3(1,1,1)), f.x), f.y), f.z);
+}
+
+float fbm(float3 x) {
+    float v = 0.0;
+    float a = 0.5;
+    float3 shift = float3(100, 100, 100);
+    for (int i = 0; i < 4; ++i) {
+        v += a * noise(x);
+        x = x * 2.0 + shift;
+        a *= 0.5;
+    }
+    return v;
+}
 
 float3 DepthToGray(float d)
 {
@@ -79,11 +107,44 @@ float4 main(PSIn input) : SV_Target
         color = float3(T, T, T);
         break;
     }
-    case 5: // Fog/Crystal view
+    case 5: // Volumetric Cloud
     {
-        float T = exp(-tau);
-        float3 fogColor = float3(0.7f, 0.9f, 1.0f);
-        color = lerp(fogColor, float3(1.0f, 1.0f, 1.05f), T);
+        if (front >= back) {
+             color = float3(0.5, 0.7, 1.0); // Sky background
+             break;
+        }
+
+        // Reconstruct ray direction
+        float2 ndc = uv * 2.0 - 1.0;
+        ndc.y = -ndc.y;
+        float4 clipFar = float4(ndc, 1.0, 1.0);
+        float4 worldFar = mul(clipFar, Globals.InvViewProj);
+        worldFar /= worldFar.w;
+        
+        float3 rayDir = normalize(worldFar.xyz - Globals.CameraPos);
+        
+        float3 startPos = Globals.CameraPos + rayDir * front;
+        float3 endPos = Globals.CameraPos + rayDir * back;
+        
+        float dist = back - front;
+        float stepSize = 0.05; // Adjust for quality vs perf
+        int steps = int(dist / stepSize);
+        steps = min(steps, 64); // Safety limit
+        
+        float totalDensity = 0;
+        float3 currentPos = startPos;
+        
+        for(int i=0; i<steps; ++i) {
+            float d = fbm(currentPos * 3.0 + float3(0, 0, 0)); // Scale noise
+            totalDensity += d * stepSize;
+            currentPos += rayDir * stepSize;
+        }
+        
+        float transmittance = exp(-totalDensity * 5.0); // Density factor
+        float3 cloudColor = float3(1.0, 1.0, 1.0);
+        float3 skyColor = float3(0.5, 0.7, 1.0);
+        
+        color = lerp(cloudColor, skyColor, transmittance);
         alpha = 1.0f;
         break;
     }

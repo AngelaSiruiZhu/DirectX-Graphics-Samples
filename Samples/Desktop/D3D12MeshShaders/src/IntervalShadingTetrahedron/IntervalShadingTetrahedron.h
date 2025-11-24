@@ -37,7 +37,7 @@ private:
         uint32_t DebugMode;
         uint32_t TetCount;
         uint32_t RandomizeOrder;
-        float Padding[3];
+        XMFLOAT3 CameraPos;
     };
 
     // Pipeline objects

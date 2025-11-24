@@ -783,6 +783,7 @@ void IntervalShadingTetrahedron::UpdateConstants()
     m_constantBufferData.Density = kDefaultDensity;
     m_constantBufferData.TetCount = static_cast<uint32_t>(m_tetIndices.size() / 4);
     m_constantBufferData.RandomizeOrder = m_randomizeDrawOrder ? 1u : 0u;
+    XMStoreFloat3(&m_constantBufferData.CameraPos, cameraPos);
 
     std::memcpy(m_cbvDataBegin + m_cbStride * m_frameIndex, &m_constantBufferData, sizeof(m_constantBufferData));
 }
