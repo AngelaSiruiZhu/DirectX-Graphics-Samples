@@ -121,16 +121,14 @@ A more realistic cloud pipeline:
 - Thin areas → transparent  
 
 #### Beer–Lambert Attenuation
-Camera ray transmittance:
-```
-T = exp(- ∫ σ_s dx)
-```
+As a ray travels through the volume, it gradually loses energy because the medium absorbs and scatters light. The farther it travels through dense regions, the dimmer it becomes. This accumulated “fading” along the ray is what gives volumetric objects their softness and depth.
 
 #### Single Scattering (Physically Based)
-At sample points:
-```
-L = T_light × Phase(θ) × σ_s
-```
+At each point inside the volume, some of the incoming light from the source gets scattered toward the camera. How bright this scattered light appears depends on:
+- how much light from the source actually reaches that point (after traveling through the medium),
+- the direction relationship between the light and the view (the phase function),
+- and the medium’s density at that location.
+This scattered contribution, combined with the gradual attenuation, creates realistic lighting inside clouds, fog, or translucent materials.
 
 #### Henyey–Greenstein Phase Function
 - Forward-biased (g ≈ 0.85)
