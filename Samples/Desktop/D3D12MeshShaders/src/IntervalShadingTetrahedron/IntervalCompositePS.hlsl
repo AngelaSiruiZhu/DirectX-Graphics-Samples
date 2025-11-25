@@ -63,7 +63,9 @@ float fbm(float3 p) {
 
 float GetDensity(float3 p) {
     float d = fbm(p * 1.5 + float3(0, 0, Globals.Time * 0.1));
-    return saturate(d - 0.2);
+    float corrosion = noise(p * 4.0 - float3(0, Globals.Time * 0.2, 0));
+    d -= corrosion * 0.4;
+    return saturate(d - 0.1);
 }
 
 float GetLight(float3 p, float3 lightDir) {
