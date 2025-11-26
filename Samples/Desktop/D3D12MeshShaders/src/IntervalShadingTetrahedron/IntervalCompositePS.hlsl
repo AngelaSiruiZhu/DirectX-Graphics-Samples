@@ -53,7 +53,7 @@ float noise(float3 x) {
 float fbm(float3 p) {
     float f = 0.0;
     float w = 0.5;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) { // Added octave
         f += w * noise(p);
         p *= 2.0;
         w *= 0.5;
@@ -62,7 +62,8 @@ float fbm(float3 p) {
 }
 
 float GetDensity(float3 p) {
-    float d = fbm(p * 1.5 + float3(0, 0, Globals.Time * 0.1));
+    // Increased base frequency from 1.5 to 3.0 for finer detail
+    float d = fbm(p * 3.0 + float3(0, 0, Globals.Time * 0.1));
     float corrosion = noise(p * 4.0 - float3(0, Globals.Time * 0.2, 0));
     d -= corrosion * 0.4;
     return saturate(d - 0.1);
@@ -142,7 +143,7 @@ float4 main(PSIn input) : SV_Target
         float3 rayDir = normalize(worldFar.xyz - Globals.CameraPos);
         
         float dist = front;
-        float stepSize = 0.05;
+        float stepSize = 0.02; // Finer steps for detail (was 0.05)
         
         float totalTransmittance = 1.0;
         float3 totalLightEnergy = 0.0;
@@ -151,22 +152,33 @@ float4 main(PSIn input) : SV_Target
         float3 ambientColor = float3(0.6, 0.7, 0.9) * 0.3;
         float3 lightDir = float3(0.0, 1.0, 0.0);
 
-        for (int i = 0; i < 64; i++) {
+        for (int i = 0; i < 128; i++) { // More steps (was 64)
             if (dist >= back || totalTransmittance < 0.01) break;
 
             float3 p = Globals.CameraPos + rayDir * dist;
-            float density = GetDensity(p);
+            
+            // FLUFFY CLOUD DENSITY:
+            float noiseDensity = GetDensity(p * (Globals.Density)); 
+            
+            // SOFT EDGE FADE:
+            float softness = 0.5; 
+            float edgeFade = saturate((dist - front) / softness) * saturate((back - dist) / softness);
+            
+            // Apply noise + fade
+            // LOWER DENSITY: Multiplier 0.7 -> 0.4 for more transparency/depth
+            // LOWER BIAS: 0.05 -> 0.0 to allow pure holes
+            float density = saturate(noiseDensity * 0.4) * edgeFade; 
 
-            if (density > 0.001) {
-                float lightTransmittance = GetLight(p, lightDir);
+            if (density > 0.0001) { // Catch faint wisps
+                // Beer's Law
+                float lightTransmittance = GetLight(p, lightDir); 
                 float3 light = sunColor * lightTransmittance + ambientColor;
-                float stepTransmittance = exp(-density * stepSize * 5.0);
+                float stepTransmittance = exp(-density * stepSize * 1.0);
                 float3 absorbedLight = light * (1.0 - stepTransmittance) * totalTransmittance;
                 
                 totalLightEnergy += absorbedLight;
                 totalTransmittance *= stepTransmittance;
             }
-
             dist += stepSize;
         }
         

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -350,32 +350,38 @@ copy %(Identity) "$(OutDir)" &gt; NUL</Command>
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">false</DeploymentContent>
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</DeploymentContent>
       <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</DeploymentContent>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">CompileShader_SM6.bat 
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">CompileShader_SM6.bat
+ 
 
 copy %(Identity) "$(OutDir)" &gt; NUL</Command>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</LinkObjects>
       <TreatOutputAsContent Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</TreatOutputAsContent>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileShader_SM6.bat 
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileShader_SM6.bat
+ 
 
 copy %(Identity) "$(OutDir)" &gt; NUL</Command>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkObjects>
       <TreatOutputAsContent Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</TreatOutputAsContent>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">CompileShader_SM6.bat 
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">CompileShader_SM6.bat
+ 
 
 copy %(Identity) "$(OutDir)" &gt; NUL</Command>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">false</LinkObjects>
       <TreatOutputAsContent Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">false</TreatOutputAsContent>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">CompileShader_SM6.bat 
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">CompileShader_SM6.bat
+ 
 
 copy %(Identity) "$(OutDir)" &gt; NUL</Command>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">false</LinkObjects>
       <TreatOutputAsContent Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">false</TreatOutputAsContent>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">CompileShader_SM6.bat 
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">CompileShader_SM6.bat
+ 
 
 copy %(Identity) "$(OutDir)" &gt; NUL</Command>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
       <TreatOutputAsContent Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</TreatOutputAsContent>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileShader_SM6.bat 
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileShader_SM6.bat
+ 
 
 copy %(Identity) "$(OutDir)" &gt; NUL</Command>
       <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>

@@ -13,6 +13,8 @@
 #include <cstring>
 #include <stdexcept>
 #include <cfloat>
+#include <commdlg.h>
+#pragma comment(lib, "Comdlg32.lib")
 #undef min
 #undef max
 
@@ -21,6 +23,10 @@ using DirectX::XMMatrixInverse;
 namespace
 {
     const wchar_t* kTetPathCandidates[] = {
+        L"..\\..\\..\\..\\Assets\\IntervalShading\\cloud.vtk", // from bin/x64/Debug
+        L"..\\..\\..\\Assets\\IntervalShading\\cloud.vtk", // from bin/x64/Config
+        L"..\\Assets\\IntervalShading\\cloud.vtk",        // from src folder
+        L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\cloud.vtk", // absolute-ish from repo root
         L"..\\..\\..\\..\\Assets\\IntervalShading\\bunny.vtk", // from bin/x64/Debug
         L"..\\..\\..\\Assets\\IntervalShading\\bunny.vtk", // from bin/x64/Config
         L"..\\Assets\\IntervalShading\\bunny.vtk",        // from src folder
@@ -40,11 +46,12 @@ IntervalShadingTetrahedron::IntervalShadingTetrahedron(UINT width, UINT height, 
     m_cbvDataBegin(nullptr),
     m_cameraAngle(0.0f),
     m_cameraElevation(0.35f),
-    m_cameraDistance(5.0f),
+    m_cameraDistance(3.5f), // Slightly farther back
     m_randomizeDrawOrder(false)
 {
     ZeroMemory(m_fenceValues, sizeof(m_fenceValues));
     ZeroMemory(&m_constantBufferData, sizeof(m_constantBufferData));
+    m_constantBufferData.DebugMode = 5; // Default to Volumetric Cloud
 }
 
 void IntervalShadingTetrahedron::OnInit()
@@ -383,12 +390,15 @@ void IntervalShadingTetrahedron::OnKeyDown(UINT8 key)
     case 'R': case 'r':
         ShuffleTets();
         break;
+    case 'O': case 'o':
+        OpenMeshFile();
+        break;
 
     case VK_LEFT:  m_cameraAngle -= rotationSpeed; break;
     case VK_RIGHT: m_cameraAngle += rotationSpeed; break;
     case VK_UP:    m_cameraElevation += rotationSpeed; break;
     case VK_DOWN:  m_cameraElevation -= rotationSpeed; break;
-    case 'W': case 'w': m_cameraDistance = (std::max)(1.5f, m_cameraDistance - zoomSpeed); break;
+    case 'W': case 'w': m_cameraDistance = (std::max)(0.5f, m_cameraDistance - zoomSpeed); break;
     case 'S': case 's': m_cameraDistance = (std::min)(15.0f, m_cameraDistance + zoomSpeed); break;
     }
     
@@ -482,9 +492,17 @@ bool IntervalShadingTetrahedron::LoadTetrahedralMesh(const std::wstring& path)
     XMFLOAT3 size;
     XMStoreFloat3(&size, maxV - minV);
     float maxExtent = (std::max)(size.x, (std::max)(size.y, size.z));
-    float scale = (maxExtent > 0.0001f) ? (1.5f / maxExtent) : 1.0f;
+    float scale = (maxExtent > 0.0001f) ? (3.5f / maxExtent) : 1.0f;
 
-    XMMATRIX model = XMMatrixScaling(scale, scale, scale) * XMMatrixTranslationFromVector(-center);
+    {
+        wchar_t msg[512];
+        swprintf_s(msg, L"[LoadTetrahedralMesh] Loaded %zu vertices, %zu tets.\nBounds: Min(%.2f, %.2f, %.2f) Max(%.2f, %.2f, %.2f)\nScale: %.4f\n",
+            m_vertices.size(), m_tetIndices.size() / 4,
+            minP.x, minP.y, minP.z, maxP.x, maxP.y, maxP.z, scale);
+        OutputDebugStringW(msg);
+    }
+
+    XMMATRIX model = XMMatrixTranslationFromVector(-center) * XMMatrixScaling(scale, scale, scale);
     XMStoreFloat4x4(&m_modelMatrix, XMMatrixTranspose(model));
     return true;
 }
@@ -869,4 +887,39 @@ void IntervalShadingTetrahedron::ShuffleTets()
         shuffled[dst + 3] = m_tetIndices[src + 3];
     }
     std::memcpy(m_tetBufferMapped, shuffled.data(), shuffled.size() * sizeof(uint32_t));
+}
+
+void IntervalShadingTetrahedron::OpenMeshFile()
+{
+    WCHAR filename[MAX_PATH];
+    filename[0] = 0;
+
+    OPENFILENAMEW ofn;
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = Win32Application::GetHwnd();
+    ofn.lpstrFilter = L"VTK Files\0*.vtk\0All Files\0*.*\0";
+    ofn.lpstrFile = filename;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrTitle = L"Select Tetrahedral Mesh";
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+
+    // Show cursor for the dialog
+    while (ShowCursor(TRUE) < 0);
+
+    if (GetOpenFileNameW(&ofn))
+    {
+        WaitForGpu(); 
+        if (LoadTetrahedralMesh(filename))
+        {
+            CreateSrvHeap();
+            UpdateConstants();
+        }
+    }
+
+    // Hide cursor again if needed (assuming the app wants it hidden, though this sample seems to use a default cursor)
+    // Actually, DXSample usually keeps the cursor visible unless in a specific mode. 
+    // But if it was sluggish, forcing it shown ensures it's available.
+    // We'll balance the ShowCursor(TRUE) with a FALSE.
+    ShowCursor(FALSE);
 }
