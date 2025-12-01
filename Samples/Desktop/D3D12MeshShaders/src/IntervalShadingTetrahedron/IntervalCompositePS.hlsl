@@ -72,12 +72,18 @@ float GetDensity(float3 p) {
 float GetLight(float3 p, float3 lightDir) {
     float lightDensity = 0.0;
     float step = 0.2;
-    for(int i=0; i<4; i++) {
+    for(int i=0; i<6; i++) {
         p += lightDir * step;
         lightDensity += GetDensity(p);
     }
-    float transmission = exp(-lightDensity * 1.5);
-    return transmission * (1.0 - exp(-lightDensity * 4.0)) * 2.0;
+    // Reduced absorption (0.5) and removed the scattering term to allow light to penetrate
+    return exp(-lightDensity * 0.5);
+}
+
+float HenyeyGreenstein(float g, float costheta)
+{
+    float g2 = g * g;
+    return (1.0 - g2) / (4.0 * 3.14159 * pow(1.0 + g2 - 2.0 * g * costheta, 1.5));
 }
 
 float3 DepthToGray(float d)
@@ -148,9 +154,9 @@ float4 main(PSIn input) : SV_Target
         float totalTransmittance = 1.0;
         float3 totalLightEnergy = 0.0;
         
-        // float3 sunColor = float3(1.0, 0.9, 0.7) * 1.5;
-        // float3 ambientColor = float3(0.6, 0.7, 0.9) * 0.3;
-        // float3 lightDir = float3(0.0, 1.0, 0.0);
+        float3 sunColor = float3(1.0, 0.9, 0.7) * 10.0;
+        float3 ambientColor = float3(0.6, 0.7, 0.9) * 0.3;
+        float3 lightPos = float3(0.0, 0.0, 0.0); // Slightly above the bunny
 
         for (int i = 0; i < 128; i++) { // More steps (was 64)
             if (dist >= back || totalTransmittance < 0.01) break;
@@ -170,10 +176,23 @@ float4 main(PSIn input) : SV_Target
             float density = saturate(noiseDensity * 2.0) * edgeFade; 
 
             if (density > 0.0001) { // Catch faint wisps
-                // Beer's Law
-                // float lightTransmittance = GetLight(p, lightDir); 
-                // float3 light = sunColor * lightTransmittance + ambientColor;
-                float3 light = 0.0f;
+                // Calculate light direction and distance for point light
+                float3 lightDir = normalize(lightPos - p);
+                float distToLight = length(lightPos - p);
+                
+                // Phase function for volumetric scattering
+                // Reduced anisotropy (g) from 0.85 to 0.3 to allow light to scatter sideways (towards camera)
+                // when the light source is at a 90-degree angle (e.g. above the bunny).
+                float cosTheta = dot(rayDir, lightDir);
+                float phase = HenyeyGreenstein(0.3, cosTheta);
+
+                // Beer's Law with point light attenuation
+                float lightTransmittance = GetLight(p, lightDir); 
+                // Reduced falloff for larger emission radius
+                float atten = 1.0 / (1.0 + distToLight * distToLight * 0.1);
+                
+                float3 light = sunColor * lightTransmittance * phase * atten + ambientColor;
+                
                 float stepTransmittance = exp(-density * stepSize * 1.0);
                 float3 absorbedLight = light * (1.0 - stepTransmittance) * totalTransmittance;
                 
