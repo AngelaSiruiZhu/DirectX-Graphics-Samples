@@ -148,9 +148,9 @@ float4 main(PSIn input) : SV_Target
         float totalTransmittance = 1.0;
         float3 totalLightEnergy = 0.0;
         
-        float3 sunColor = float3(1.0, 0.9, 0.7) * 1.5;
-        float3 ambientColor = float3(0.6, 0.7, 0.9) * 0.3;
-        float3 lightDir = float3(0.0, 1.0, 0.0);
+        // float3 sunColor = float3(1.0, 0.9, 0.7) * 1.5;
+        // float3 ambientColor = float3(0.6, 0.7, 0.9) * 0.3;
+        // float3 lightDir = float3(0.0, 1.0, 0.0);
 
         for (int i = 0; i < 128; i++) { // More steps (was 64)
             if (dist >= back || totalTransmittance < 0.01) break;
@@ -167,12 +167,13 @@ float4 main(PSIn input) : SV_Target
             // Apply noise + fade
             // LOWER DENSITY: Multiplier 0.7 -> 0.4 for more transparency/depth
             // LOWER BIAS: 0.05 -> 0.0 to allow pure holes
-            float density = saturate(noiseDensity * 0.4) * edgeFade; 
+            float density = saturate(noiseDensity * 2.0) * edgeFade; 
 
             if (density > 0.0001) { // Catch faint wisps
                 // Beer's Law
-                float lightTransmittance = GetLight(p, lightDir); 
-                float3 light = sunColor * lightTransmittance + ambientColor;
+                // float lightTransmittance = GetLight(p, lightDir); 
+                // float3 light = sunColor * lightTransmittance + ambientColor;
+                float3 light = 0.0f;
                 float stepTransmittance = exp(-density * stepSize * 1.0);
                 float3 absorbedLight = light * (1.0 - stepTransmittance) * totalTransmittance;
                 

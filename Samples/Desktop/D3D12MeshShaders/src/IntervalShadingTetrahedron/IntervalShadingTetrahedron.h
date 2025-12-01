@@ -92,6 +92,7 @@ private:
     XMFLOAT4X4 m_modelMatrix;
 
     bool LoadTetrahedralMesh(const std::wstring& path);
+    void OpenMeshFile();
     void CreateIntervalTargets();
     void CreateSrvHeap();
     void BuildIntervalPipelineState();
@@ -106,3 +107,4 @@ private:
     void WaitForGpu();
     std::vector<BYTE> ReadData(const std::wstring& filename);
 };
+
