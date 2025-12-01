@@ -63,8 +63,8 @@ float fbm(float3 p) {
 
 float GetDensity(float3 p) {
     // Increased base frequency from 1.5 to 3.0 for finer detail
-    float d = fbm(p * 3.0 + float3(0, 0, Globals.Time * 0.1));
-    float corrosion = noise(p * 4.0 - float3(0, Globals.Time * 0.2, 0));
+    float d = fbm(p * 3.0 + float3(0, 0, Globals.Time * 0.5));
+    float corrosion = noise(p * 4.0 - float3(0, Globals.Time * 1.0, 0));
     d -= corrosion * 0.4;
     return saturate(d - 0.1);
 }
@@ -78,6 +78,14 @@ float GetLight(float3 p, float3 lightDir) {
     }
     // Reduced absorption (0.5) and removed the scattering term to allow light to penetrate
     return exp(-lightDensity * 0.5);
+}
+
+float GetDensityLowQ(float3 p) {
+    // Low quality density for radial blur (2 noise calls)
+    float d = noise(p * 3.0 + float3(0, 0, Globals.Time * 0.5));
+    float corrosion = noise(p * 4.0 - float3(0, Globals.Time * 1.0, 0));
+    d -= corrosion * 0.4;
+    return saturate(d - 0.1);
 }
 
 float HenyeyGreenstein(float g, float costheta)
@@ -101,6 +109,17 @@ float3 HeatMap(float v)
         1.5f * (1.0f - abs(v - 0.5f) * 2.0f),
         1.5f * (1.0f - v)));
     return c;
+}
+
+float3 GetWorldPos(float2 uv, float depth)
+{
+    float2 ndc = uv * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    float4 clipFar = float4(ndc, 1.0, 1.0);
+    float4 worldFar = mul(clipFar, Globals.InvViewProj);
+    worldFar /= worldFar.w;
+    float3 rayDir = normalize(worldFar.xyz - Globals.CameraPos);
+    return Globals.CameraPos + rayDir * depth;
 }
 
 float4 main(PSIn input) : SV_Target
@@ -132,78 +151,128 @@ float4 main(PSIn input) : SV_Target
         color = float3(T, T, T);
         break;
     }
-    case 5: // Volumetric Cloud
+    case 5: // Volumetric Cloud + Light ( + screen space god rays)
     {
-        if (front >= back) {
-             color = float3(0.5, 0.7, 1.0); // Sky background
-             break;
-        }
+        float3 cloudColor = 0;
+        float cloudTransmittance = 1.0;
+        float3 accumulatedLight = 0;
+        
+        float3 lightPos = float3(0,0,0);
+        float3 lightColor = float3(1.0, 0.9, 0.7) * 0.05; 
 
-        // Reconstruct ray direction
-        float2 ndc = uv * 2.0 - 1.0;
-        ndc.y = -ndc.y;
-        float4 clipFar = float4(ndc, 1.0, 1.0);
-        float4 worldFar = mul(clipFar, Globals.InvViewProj);
-        worldFar /= worldFar.w;
-        
-        float3 rayDir = normalize(worldFar.xyz - Globals.CameraPos);
-        
-        float dist = front;
-        float stepSize = 0.02; // Finer steps for detail (was 0.05)
-        
-        float totalTransmittance = 1.0;
-        float3 totalLightEnergy = 0.0;
-        
-        float3 sunColor = float3(1.0, 0.9, 0.7) * 10.0;
-        float3 ambientColor = float3(0.6, 0.7, 0.9) * 0.3;
-        float3 lightPos = float3(0.0, 0.0, 0.0); // Slightly above the bunny
-
-        for (int i = 0; i < 128; i++) { // More steps (was 64)
-            if (dist >= back || totalTransmittance < 0.01) break;
-
-            float3 p = Globals.CameraPos + rayDir * dist;
+        if (front < back) {
+            // Reconstruct ray direction
+            float2 ndc = uv * 2.0 - 1.0;
+            ndc.y = -ndc.y;
+            float4 clipFar = float4(ndc, 1.0, 1.0);
+            float4 worldFar = mul(clipFar, Globals.InvViewProj);
+            worldFar /= worldFar.w;
             
-            // FLUFFY CLOUD DENSITY:
-            float noiseDensity = GetDensity(p * (Globals.Density)); 
+            float3 rayDir = normalize(worldFar.xyz - Globals.CameraPos);
             
-            // SOFT EDGE FADE:
-            float softness = 0.5; 
-            float edgeFade = saturate((dist - front) / softness) * saturate((back - dist) / softness);
+            float dist = front;
+            float stepSize = 0.02; 
             
-            // Apply noise + fade
-            // LOWER DENSITY: Multiplier 0.7 -> 0.4 for more transparency/depth
-            // LOWER BIAS: 0.05 -> 0.0 to allow pure holes
-            float density = saturate(noiseDensity * 2.0) * edgeFade; 
+            for (int i = 0; i < 64; i++) { 
+                if (dist >= back || cloudTransmittance < 0.01) break;
 
-            if (density > 0.0001) { // Catch faint wisps
-                // Calculate light direction and distance for point light
-                float3 lightDir = normalize(lightPos - p);
-                float distToLight = length(lightPos - p);
-                
-                // Phase function for volumetric scattering
-                // Reduced anisotropy (g) from 0.85 to 0.3 to allow light to scatter sideways (towards camera)
-                // when the light source is at a 90-degree angle (e.g. above the bunny).
-                float cosTheta = dot(rayDir, lightDir);
-                float phase = HenyeyGreenstein(0.3, cosTheta);
+                float3 p = Globals.CameraPos + rayDir * dist;
+                float noiseDensity = GetDensity(p * (Globals.Density)); 
+                float softness = 0.5; 
+                float edgeFade = saturate((dist - front) / softness) * saturate((back - dist) / softness);
+                float density = saturate(noiseDensity * 2.0) * edgeFade; 
 
-                // Beer's Law with point light attenuation
-                float lightTransmittance = GetLight(p, lightDir); 
-                // Reduced falloff for larger emission radius
-                float atten = 1.0 / (1.0 + distToLight * distToLight * 0.1);
-                
-                float3 light = sunColor * lightTransmittance * phase * atten + ambientColor;
-                
-                float stepTransmittance = exp(-density * stepSize * 1.0);
-                float3 absorbedLight = light * (1.0 - stepTransmittance) * totalTransmittance;
-                
-                totalLightEnergy += absorbedLight;
-                totalTransmittance *= stepTransmittance;
+                if (density > 0.0001) { 
+                    float distToLight = length(p);
+                    
+                    // Shadow march towards light (3 samples)
+                    float shadowDensity = 0;
+                    float3 s1 = p * 0.75;
+                    float3 s2 = p * 0.50;
+                    float3 s3 = p * 0.25;
+                    shadowDensity += GetDensity(s1 * Globals.Density);
+                    shadowDensity += GetDensity(s2 * Globals.Density);
+                    shadowDensity += GetDensity(s3 * Globals.Density);
+                    
+                    float lightTransmittance = exp(-shadowDensity * 1.5); // Absorption along light ray
+                    float attenuation = 1.0 / (0.1 + distToLight * distToLight * 0.05); 
+                    
+                    float3 sunColor = float3(1.0, 0.95, 0.9) * 0.5; //directional light
+                    float3 ambient = float3(0.6,0.6,0.6); // ambient
+                    
+                    float3 incoming = (lightColor * lightTransmittance * attenuation) + sunColor + ambient;
+                    
+                    float stepTransmittance = exp(-density * stepSize * 1.0);
+                    float3 scattered = incoming * density * stepSize;
+                    
+                    accumulatedLight += scattered * cloudTransmittance;
+                    cloudTransmittance *= stepTransmittance;
+                }
+                dist += stepSize;
             }
-            dist += stepSize;
         }
         
         float3 skyColor = float3(0.5, 0.7, 1.0);
-        color = totalLightEnergy + skyColor * totalTransmittance;
+        float3 finalCloudColor = accumulatedLight + skyColor * cloudTransmittance;
+
+        // Screen Space God Rays using Radial Blur
+        float4 lightClip = mul(float4(lightPos, 1.0), Globals.ViewProj); // light source screen position
+        float2 lightScreen = lightClip.xy / lightClip.w;
+        lightScreen = lightScreen * 0.5 + 0.5;
+        lightScreen.y = 1.0 - lightScreen.y;
+        
+        float2 deltaTexCoord = (uv - lightScreen);
+        int samples = 32; 
+        float density = 0.9;
+        float weight = 0.008;
+        float decay = 0.97;
+        
+        deltaTexCoord *= 1.0 / float(samples) * density;
+        
+        float2 coord = uv;
+        float illuminationDecay = 1.0;
+        float3 godRayColor = 0.0;
+        
+        for(int i=0; i < samples; i++)
+        {
+            coord -= deltaTexCoord;
+            
+            float sFront = FrontTex.SampleLevel(LinearClamp, coord, 0);
+            float sBack  = BackTex.SampleLevel(LinearClamp, coord, 0);
+            
+            float sampleTransmittance = 0.0;
+            
+            if (sFront < sBack) // Inside volume
+            {
+                // Sample 3 points to catch internal density structure
+                float3 rayDir = normalize(GetWorldPos(coord, sBack) - Globals.CameraPos);
+                float step = (sBack - sFront) / 3.0;
+                float maxDensity = 0;
+                
+                // Check 3 points along the ray segment inside the box
+                // use max() because if ANY part is dense, it blocks the light.
+                float3 p1 = Globals.CameraPos + rayDir * (sFront + step * 0.5);
+                float3 p2 = Globals.CameraPos + rayDir * (sFront + step * 1.5);
+                float3 p3 = Globals.CameraPos + rayDir * (sFront + step * 2.5);
+                
+                maxDensity = max(maxDensity, GetDensityLowQ(p1 * Globals.Density));
+                maxDensity = max(maxDensity, GetDensityLowQ(p2 * Globals.Density));
+                maxDensity = max(maxDensity, GetDensityLowQ(p3 * Globals.Density));
+                
+                // If max density is high -> blocked.
+                float block = smoothstep(0.2, 0.6, maxDensity);
+                sampleTransmittance = 1.0 - block;
+                
+                float distToLight = length(p2); // Use middle point distance
+                float attenuation = 1.0 / (0.1 + distToLight * distToLight * 0.2);
+                sampleTransmittance *= attenuation;
+            }
+            
+            godRayColor += sampleTransmittance * illuminationDecay * weight;
+            illuminationDecay *= decay;
+        }
+        
+        color = finalCloudColor + godRayColor * float3(0.4, 0.3, 0.2);
         alpha = 1.0f;
         break;
     }
