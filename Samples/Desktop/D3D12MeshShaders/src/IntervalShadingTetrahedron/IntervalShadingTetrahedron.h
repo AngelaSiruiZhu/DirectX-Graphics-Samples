@@ -32,12 +32,22 @@ private:
         XMFLOAT4X4 Proj;
         XMFLOAT4X4 ViewProj;
         XMFLOAT4X4 InvViewProj;
+
+        XMFLOAT3 CameraPos;
         float NearPlane;
+
+        XMFLOAT3 LightDir;    // New: Direction to light
         float Density;
+
+        XMFLOAT3 LightColor;  // New: Light intensity/color
         uint32_t DebugMode;
+
+        XMFLOAT3 SigmaS;      // New: Scattering coefficient
         uint32_t TetCount;
+
+        float G;              // New: Phase function anisotropy
         uint32_t RandomizeOrder;
-        float Padding[3];
+        float Padding[2];
     };
 
     // Pipeline objects

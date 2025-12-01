@@ -10,12 +10,12 @@ struct Constants
     float4x4 Proj;
     float4x4 ViewProj;
     float4x4 InvViewProj;
+    float3 CameraPos; // Replaced padding
     float NearPlane;
     float Density;
     uint DebugMode;
     uint TetCount;
     uint RandomizeOrder;
-    float3 Padding;
 };
 
 cbuffer SceneConstants : register(b0)
@@ -52,8 +52,8 @@ struct Proxy
 struct ProxyVertex
 {
     float4 Position : SV_Position;
-    float4 Depths   : TEXCOORD0;
-    float2 NDC      : TEXCOORD1;
+    float4 Depths : TEXCOORD0;
+    float2 NDC : TEXCOORD1;
 };
 
 static const int2 edges[6] = {
@@ -342,8 +342,8 @@ void main(
                     proxies[i].depths[2] = float4(clipZ[ic], clipW[ic], clipZ[ic], clipW[ic]);
                     float frontZ = (p.z < zInterp) ? clipZ[potentialProjection[j].x] : interpClipZ;
                     float frontW = (p.z < zInterp) ? clipW[potentialProjection[j].x] : interpClipW;
-                    float backZ  = (p.z < zInterp) ? interpClipZ : clipZ[potentialProjection[j].x];
-                    float backW  = (p.z < zInterp) ? interpClipW : clipW[potentialProjection[j].x];
+                    float backZ = (p.z < zInterp) ? interpClipZ : clipZ[potentialProjection[j].x];
+                    float backW = (p.z < zInterp) ? interpClipW : clipW[potentialProjection[j].x];
                     proxies[i].depths[3] = float4(frontZ, frontW, backZ, backW);
                     proxies[i].pointCount = 4;
                 }
