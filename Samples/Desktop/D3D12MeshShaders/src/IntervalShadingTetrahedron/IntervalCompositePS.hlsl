@@ -66,7 +66,7 @@ float GetDensity(float3 p) {
     float d = fbm(p * 3.0 + float3(0, 0, Globals.Time * 0.5));
     float corrosion = noise(p * 4.0 - float3(0, Globals.Time * 1.0, 0));
     d -= corrosion * 0.4;
-    return saturate(d - 0.1);
+    return saturate((d - 0.05) * 2.0);
 }
 
 float GetLight(float3 p, float3 lightDir) {
@@ -85,7 +85,7 @@ float GetDensityLowQ(float3 p) {
     float d = noise(p * 3.0 + float3(0, 0, Globals.Time * 0.5));
     float corrosion = noise(p * 4.0 - float3(0, Globals.Time * 1.0, 0));
     d -= corrosion * 0.4;
-    return saturate(d - 0.1);
+    return saturate((d - 0.05) * 2.0);
 }
 
 float HenyeyGreenstein(float g, float costheta)
