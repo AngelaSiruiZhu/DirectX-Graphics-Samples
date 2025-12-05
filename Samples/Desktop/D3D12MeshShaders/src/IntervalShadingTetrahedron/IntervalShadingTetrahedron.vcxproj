@@ -122,6 +122,16 @@
       <ShaderModel>6.5</ShaderModel>
       <ObjectFileOutput>$(OutDir)%(Filename).cso</ObjectFileOutput>
     </FxCompile>
+    <FxCompile Include="DebugMeshMS.hlsl">
+      <ShaderType>Mesh</ShaderType>
+      <ShaderModel>6.5</ShaderModel>
+      <ObjectFileOutput>$(OutDir)%(Filename).cso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="DebugMeshPS.hlsl">
+      <ShaderType>Pixel</ShaderType>
+      <ShaderModel>6.5</ShaderModel>
+      <ObjectFileOutput>$(OutDir)%(Filename).cso</ObjectFileOutput>
+    </FxCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

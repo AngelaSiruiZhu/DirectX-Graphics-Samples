@@ -23,15 +23,15 @@ using DirectX::XMMatrixInverse;
 namespace
 {
     const wchar_t* kTetPathCandidates[] = {
+        L"..\\..\\Assets\\IntervalShading\\bunny.vtk",        // from src folder
+        L"..\\..\\..\\Assets\\IntervalShading\\bunny.vtk", // from bin/x64/Config
+        L"..\\..\\..\\..\\Assets\\IntervalShading\\bunny.vtk", // from bin/x64/Debug
+        L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\bunny.vtk", // absolute-ish from repo root
         L"..\\..\\Assets\\IntervalShading\\cloud.vtk", // from bin (custom build)
         L"..\\..\\..\\..\\Assets\\IntervalShading\\cloud.vtk", // from bin/x64/Debug
         L"..\\..\\..\\Assets\\IntervalShading\\cloud.vtk", // from bin/x64/Config
         L"..\\Assets\\IntervalShading\\cloud.vtk",        // from src folder
         L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\cloud.vtk", // absolute-ish from repo root
-        L"..\\..\\..\\..\\Assets\\IntervalShading\\bunny.vtk", // from bin/x64/Debug
-        L"..\\..\\..\\Assets\\IntervalShading\\bunny.vtk", // from bin/x64/Config
-        L"..\\Assets\\IntervalShading\\bunny.vtk",        // from src folder
-        L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\bunny.vtk" // absolute-ish from repo root
     };
     constexpr float kDefaultDensity = 0.8f;
     constexpr float kNearPlane = 0.1f;
@@ -215,6 +215,7 @@ void IntervalShadingTetrahedron::LoadAssets()
     CreateSrvHeap();
     BuildIntervalPipelineState();
     BuildCompositePipelineState();
+    BuildDebugPipelineState();
 
     // Create the command list (start closed).
     ThrowIfFailed(m_device->CreateCommandList(
@@ -346,18 +347,32 @@ void IntervalShadingTetrahedron::PopulateCommandList()
         CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
         m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
-        const float clearColor[] = { 0.0f, 1.0f, 0.0f, 1.0f };
+        const float clearColor[] = { 0.5f, 0.7f, 1.0f, 1.0f }; // Sky color
         m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
-        m_commandList->SetGraphicsRootSignature(m_compositeRootSignature.Get());
-        m_commandList->SetPipelineState(m_compositePipelineState.Get());
-        m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
-        // Front/back/optical are at SRV heap indices 2/3/4 (t2/t3/t4).
-        CD3DX12_GPU_DESCRIPTOR_HANDLE frontSrv(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), 2, m_srvDescriptorSize);
-        m_commandList->SetGraphicsRootDescriptorTable(1, frontSrv);
+        if (m_constantBufferData.DebugMode != 6)
+        {
+            m_commandList->SetGraphicsRootSignature(m_compositeRootSignature.Get());
+            m_commandList->SetPipelineState(m_compositePipelineState.Get());
+            m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
+            // Front/back/optical are at SRV heap indices 2/3/4 (t2/t3/t4).
+            CD3DX12_GPU_DESCRIPTOR_HANDLE frontSrv(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), 2, m_srvDescriptorSize);
+            m_commandList->SetGraphicsRootDescriptorTable(1, frontSrv);
 
-        m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        m_commandList->DrawInstanced(3, 1, 0, 0);
+            m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            m_commandList->DrawInstanced(3, 1, 0, 0);
+        }
+
+        // Debug Pass: Wireframe Overlay
+        if (m_constantBufferData.DebugMode == 6)
+        {
+            m_commandList->SetPipelineState(m_debugPipelineState.Get());
+            m_commandList->SetGraphicsRootSignature(m_intervalRootSignature.Get());
+            m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
+            m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
+
+            m_commandList->DispatchMesh((m_constantBufferData.TetCount + 31) / 32, 1, 1);
+        }
 
         CD3DX12_RESOURCE_BARRIER toPresent = CD3DX12_RESOURCE_BARRIER::Transition(
             m_renderTargets[m_frameIndex].Get(),
@@ -388,6 +403,7 @@ void IntervalShadingTetrahedron::OnKeyDown(UINT8 key)
     case '4': m_constantBufferData.DebugMode = 3; break; // tau
     case '5': m_constantBufferData.DebugMode = 4; break; // T
     case '6': m_constantBufferData.DebugMode = 5; break; // fog/crystal
+    case '7': m_constantBufferData.DebugMode = 6; break; // Wireframe
     case 'R': case 'r':
         ShuffleTets();
         break;
@@ -765,6 +781,58 @@ void IntervalShadingTetrahedron::BuildCompositePipelineState()
     streamDesc.pPipelineStateSubobjectStream = &psoStream;
     streamDesc.SizeInBytes = sizeof(psoStream);
     ThrowIfFailed(m_device->CreatePipelineState(&streamDesc, IID_PPV_ARGS(&m_compositePipelineState)));
+}
+
+void IntervalShadingTetrahedron::BuildDebugPipelineState()
+{
+    std::vector<BYTE> meshShader = ReadData(L"DebugMeshMS.cso");
+    std::vector<BYTE> pixelShader = ReadData(L"DebugMeshPS.cso");
+
+    D3D12_PIPELINE_STATE_STREAM_DESC psoDesc = {};
+    struct PSO_STREAM
+    {
+        CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
+        CD3DX12_PIPELINE_STATE_STREAM_MS MS;
+        CD3DX12_PIPELINE_STATE_STREAM_PS PS;
+        CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER RasterizerState;
+        CD3DX12_PIPELINE_STATE_STREAM_BLEND_DESC BlendState;
+        CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL DepthStencilState;
+        CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+    } stream;
+
+    stream.pRootSignature = m_intervalRootSignature.Get();
+    stream.MS = CD3DX12_SHADER_BYTECODE(meshShader.data(), meshShader.size());
+    stream.PS = CD3DX12_SHADER_BYTECODE(pixelShader.data(), pixelShader.size());
+
+    CD3DX12_RASTERIZER_DESC rasterizer(D3D12_DEFAULT);
+    rasterizer.CullMode = D3D12_CULL_MODE_NONE;
+    rasterizer.FillMode = D3D12_FILL_MODE_WIREFRAME;
+    stream.RasterizerState = rasterizer;
+
+    CD3DX12_BLEND_DESC blend(D3D12_DEFAULT);
+    blend.RenderTarget[0].BlendEnable = TRUE;
+    blend.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+    blend.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+    blend.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+    blend.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+    blend.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+    blend.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    blend.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+    stream.BlendState = blend;
+
+    CD3DX12_DEPTH_STENCIL_DESC depth(D3D12_DEFAULT);
+    depth.DepthEnable = FALSE;
+    stream.DepthStencilState = depth;
+
+    D3D12_RT_FORMAT_ARRAY rtvFormats = {};
+    rtvFormats.NumRenderTargets = 1;
+    rtvFormats.RTFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    stream.RTVFormats = rtvFormats;
+
+    psoDesc.pPipelineStateSubobjectStream = &stream;
+    psoDesc.SizeInBytes = sizeof(stream);
+
+    ThrowIfFailed(m_device->CreatePipelineState(&psoDesc, IID_PPV_ARGS(&m_debugPipelineState)));
 }
 
 void IntervalShadingTetrahedron::UploadBuffer(ID3D12Resource** destination, const void* data, size_t byteSize)
