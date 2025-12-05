@@ -23,6 +23,7 @@ using DirectX::XMMatrixInverse;
 namespace
 {
     const wchar_t* kTetPathCandidates[] = {
+        L"..\\..\\Assets\\IntervalShading\\cloud.vtk", // from bin (custom build)
         L"..\\..\\..\\..\\Assets\\IntervalShading\\cloud.vtk", // from bin/x64/Debug
         L"..\\..\\..\\Assets\\IntervalShading\\cloud.vtk", // from bin/x64/Config
         L"..\\Assets\\IntervalShading\\cloud.vtk",        // from src folder
