@@ -7,9 +7,35 @@
 
 #include "DXSample.h"
 #include <vector>
+#include <map>
+#include <string>
 
 using namespace DirectX;
 using Microsoft::WRL::ComPtr;
+
+struct SceneObject
+{
+    std::string MeshName;
+    XMFLOAT4X4 WorldMatrix;
+    // Cached indices into the global mesh buffers
+    UINT IndexCount;
+    UINT VertexCount;
+    // We need offsets if we pack multiple meshes into one buffer, 
+    // OR we can keep a separate buffer per mesh type.
+    // For simplicity given the current architecture, let's assume we load ONE unique mesh type per object 
+    // or we store the resource pointer here.
+    // Better: Store an index into a m_meshes vector.
+    size_t MeshIndex; 
+};
+
+struct MeshData
+{
+    std::vector<XMFLOAT4> Vertices;
+    std::vector<uint32_t> Indices;
+    ComPtr<ID3D12Resource> VertexBuffer;
+    ComPtr<ID3D12Resource> IndexBuffer; // TetBuffer
+    std::string Name;
+};
 
 class IntervalShadingTetrahedron : public DXSample
 {
@@ -39,6 +65,8 @@ private:
         uint32_t RandomizeOrder;
         XMFLOAT3 CameraPos;
         float Time;
+        XMFLOAT3 LightDir;
+        uint32_t TetOffset; // Offset into global index buffer
     };
 
     // Pipeline objects
@@ -57,6 +85,7 @@ private:
     ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
     ComPtr<ID3D12PipelineState> m_intervalPipelineState;
     ComPtr<ID3D12PipelineState> m_compositePipelineState;
+    ComPtr<ID3D12PipelineState> m_debugPipelineState;
     ComPtr<ID3D12Resource> m_frontRT;
     ComPtr<ID3D12Resource> m_backRT;
     ComPtr<ID3D12Resource> m_opticalDepthRT;
@@ -84,19 +113,26 @@ private:
     UINT64 m_fenceValues[FrameCount];
 
     // Mesh data
-    std::vector<XMFLOAT4> m_vertices;
-    std::vector<uint32_t> m_tetIndices;
-    ComPtr<ID3D12Resource> m_vertexBuffer;
-    ComPtr<ID3D12Resource> m_tetBuffer;
-    uint8_t* m_tetBufferMapped = nullptr;
-    XMFLOAT4X4 m_modelMatrix;
+    std::vector<XMFLOAT4> m_vertices; 
+    std::vector<uint32_t> m_tetIndices; 
+    ComPtr<ID3D12Resource> m_vertexBuffer; 
+    ComPtr<ID3D12Resource> m_tetBuffer; 
+    
+    // New Scene Data
+    std::vector<MeshData> m_meshes;
+    std::vector<SceneObject> m_sceneObjects;
+    
+    uint8_t* m_tetBufferMapped = nullptr; // TODO: Handle shuffling for multiple meshes or remove
+    XMFLOAT4X4 m_modelMatrix; // Keep for fallback or debug
 
-    bool LoadTetrahedralMesh(const std::wstring& path);
+    bool LoadTetrahedralMesh(const std::wstring& path, MeshData& outMesh);
+    void LoadScene(const std::wstring& scenePath);
     void OpenMeshFile();
     void CreateIntervalTargets();
     void CreateSrvHeap();
     void BuildIntervalPipelineState();
     void BuildCompositePipelineState();
+    void BuildDebugPipelineState();
     void UploadBuffer(ID3D12Resource** destination, const void* data, size_t byteSize);
     void ShuffleTets();
     void UpdateConstants();

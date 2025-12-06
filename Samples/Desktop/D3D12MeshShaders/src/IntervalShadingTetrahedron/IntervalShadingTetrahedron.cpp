@@ -14,6 +14,10 @@
 #include <stdexcept>
 #include <cfloat>
 #include <commdlg.h>
+#include <filesystem>
+#include "../../../../../MiniEngine/Model/json.hpp" 
+
+using json = nlohmann::json;
 #pragma comment(lib, "Comdlg32.lib")
 #undef min
 #undef max
@@ -57,13 +61,13 @@ IntervalShadingTetrahedron::IntervalShadingTetrahedron(UINT width, UINT height, 
     m_cbvDataBegin(nullptr),
     m_cameraAngle(0.0f),
     m_cameraElevation(0.35f),
-    m_cameraDistance(3.5f), // Slightly farther back
+    m_cameraDistance(15.0f), // Further back to see the scene
     m_randomizeDrawOrder(false)
 {
     ZeroMemory(m_fenceValues, sizeof(m_fenceValues));
     ZeroMemory(&m_constantBufferData, sizeof(m_constantBufferData));
     m_constantBufferData.DebugMode = 5; // Default to Volumetric Cloud
-    m_constantBufferData.LightDir = XMFLOAT3(0.5f, -0.8f, 0.2f); // Default sun-like direction (top-right-front)
+    m_constantBufferData.LightDir = XMFLOAT3(0.5f, -0.8f, 0.2f); // Default sun-like direction
 }
 
 void IntervalShadingTetrahedron::OnInit()
@@ -209,19 +213,53 @@ void IntervalShadingTetrahedron::LoadPipeline()
 
 void IntervalShadingTetrahedron::LoadAssets()
 {
-    bool loaded = false;
-    for (auto path : kTetPathCandidates)
+    // Try to load scene.json first
+    std::wstring scenePath = L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\scene.json";
+    // Also try relative paths
+    if (!std::filesystem::exists(scenePath)) scenePath = L"..\\..\\Assets\\IntervalShading\\scene.json";
+    if (!std::filesystem::exists(scenePath)) scenePath = L"..\\..\\..\\..\\Assets\\IntervalShading\\scene.json";
+    
+    bool sceneLoaded = false;
+    if (std::filesystem::exists(scenePath))
     {
-        if (LoadTetrahedralMesh(path))
-        {
-            loaded = true;
-            break;
+        try {
+            LoadScene(scenePath);
+            sceneLoaded = true;
+        } catch (...) {
+            OutputDebugStringW(L"Failed to load scene.json, falling back to single mesh.\n");
         }
     }
-    if (!loaded)
+
+    if (!sceneLoaded)
     {
-        throw std::runtime_error("Unable to open tet mesh (checked bunny.vtk in expected locations).");
+        // Fallback to single mesh
+        MeshData md;
+        bool loaded = false;
+        for (auto path : kTetPathCandidates)
+        {
+            if (LoadTetrahedralMesh(path, md))
+            {
+                loaded = true;
+                break;
+            }
+        }
+        if (!loaded)
+        {
+            throw std::runtime_error("Unable to open tet mesh (checked candidates).");
+        }
+        
+        // Single object setup
+        m_vertices = md.Vertices;
+        m_tetIndices = md.Indices;
+        
+        SceneObject so;
+        so.MeshName = "Default";
+        so.WorldMatrix = m_modelMatrix; // Use the one calculated in LoadTet
+        so.IndexCount = static_cast<UINT>(m_tetIndices.size());
+        so.MeshIndex = 0;
+        m_sceneObjects.push_back(so);
     }
+
     CreateIntervalTargets();
     CreateSrvHeap();
     BuildIntervalPipelineState();
@@ -240,7 +278,8 @@ void IntervalShadingTetrahedron::LoadAssets()
     // Constant buffer
     {
         m_cbStride = (sizeof(SceneConstantBuffer) + 255ull) & ~255ull;
-        const UINT64 constantBufferSize = m_cbStride * FrameCount;
+        // Allocate enough for 64 objects per frame
+        const UINT64 constantBufferSize = m_cbStride * FrameCount * 64; 
         CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
         CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(constantBufferSize);
         ThrowIfFailed(m_device->CreateCommittedResource(
@@ -333,9 +372,19 @@ void IntervalShadingTetrahedron::PopulateCommandList()
 
         m_commandList->SetGraphicsRootSignature(m_intervalRootSignature.Get());
         m_commandList->SetPipelineState(m_intervalPipelineState.Get());
-        m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
+        // m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
         m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
-        m_commandList->DispatchMesh((m_constantBufferData.TetCount + 15) / 16, 1, 1);
+        
+        // Dispatch per object
+        for (size_t i = 0; i < m_sceneObjects.size(); ++i)
+        {
+            if (i >= 64) break;
+            UINT64 cbOffset = (m_frameIndex * 64 + i) * m_cbStride;
+            m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + cbOffset);
+            
+            UINT tetCount = m_sceneObjects[i].IndexCount / 4;
+            m_commandList->DispatchMesh((tetCount + 15) / 16, 1, 1);
+        }
 
         transitionIf(m_frontRT, m_frontState, shaderRead);
         transitionIf(m_backRT, m_backState, shaderRead);
@@ -365,7 +414,10 @@ void IntervalShadingTetrahedron::PopulateCommandList()
         {
             m_commandList->SetGraphicsRootSignature(m_compositeRootSignature.Get());
             m_commandList->SetPipelineState(m_compositePipelineState.Get());
-            m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
+            // Use Object 0 constants for global view/proj/light
+            UINT64 cbOffset = (m_frameIndex * 64 + 0) * m_cbStride;
+            m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + cbOffset);
+            
             // Front/back/optical are at SRV heap indices 2/3/4 (t2/t3/t4).
             CD3DX12_GPU_DESCRIPTOR_HANDLE frontSrv(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), 2, m_srvDescriptorSize);
             m_commandList->SetGraphicsRootDescriptorTable(1, frontSrv);
@@ -379,10 +431,18 @@ void IntervalShadingTetrahedron::PopulateCommandList()
         {
             m_commandList->SetPipelineState(m_debugPipelineState.Get());
             m_commandList->SetGraphicsRootSignature(m_intervalRootSignature.Get());
-            m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
+            
             m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
 
-            m_commandList->DispatchMesh((m_constantBufferData.TetCount + 31) / 32, 1, 1);
+            for (size_t i = 0; i < m_sceneObjects.size(); ++i)
+            {
+                if (i >= 64) break;
+                UINT64 cbOffset = (m_frameIndex * 64 + i) * m_cbStride;
+                m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + cbOffset);
+                
+                UINT tetCount = m_sceneObjects[i].IndexCount / 4;
+                m_commandList->DispatchMesh((tetCount + 31) / 32, 1, 1);
+            }
         }
 
         CD3DX12_RESOURCE_BARRIER toPresent = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -458,10 +518,10 @@ static double GetTime()
     return static_cast<double>(now.QuadPart - start.QuadPart) / freq.QuadPart;
 }
 
-bool IntervalShadingTetrahedron::LoadTetrahedralMesh(const std::wstring& path)
+bool IntervalShadingTetrahedron::LoadTetrahedralMesh(const std::wstring& path, MeshData& outMesh)
 {
-    m_vertices.clear();
-    m_tetIndices.clear();
+    outMesh.Vertices.clear();
+    outMesh.Indices.clear();
 
     std::ifstream file(path);
     if (!file.is_open())
@@ -480,59 +540,167 @@ bool IntervalShadingTetrahedron::LoadTetrahedralMesh(const std::wstring& path)
             std::stringstream ss(line.substr(2));
             float x, y, z;
             ss >> x >> y >> z;
-            m_vertices.push_back(XMFLOAT4(x, y, z, 1.0f));
+            outMesh.Vertices.push_back(XMFLOAT4(x, y, z, 1.0f));
         }
         else if (line[0] == 't' && line[1] == ' ')
         {
             std::stringstream ss(line.substr(2));
-            uint32_t a, b, c, d;
-            ss >> a >> b >> c >> d;
-            m_tetIndices.push_back(a);
-            m_tetIndices.push_back(b);
-            m_tetIndices.push_back(c);
-            m_tetIndices.push_back(d);
+            uint32_t i0, i1, i2, i3;
+            ss >> i0 >> i1 >> i2 >> i3;
+            outMesh.Indices.push_back(i0);
+            outMesh.Indices.push_back(i1);
+            outMesh.Indices.push_back(i2);
+            outMesh.Indices.push_back(i3);
         }
     }
+    
+    // Scale normalization (Optional, maybe skip for scene composition?)
+    // Let's keep it to ensure consistent unit size, then scale via WorldMatrix.
+    if (outMesh.Vertices.empty()) return false;
 
-    if (m_vertices.empty() || m_tetIndices.empty())
+    XMVECTOR minV = XMLoadFloat4(&outMesh.Vertices[0]);
+    XMVECTOR maxV = minV;
+
+    for (const auto& v : outMesh.Vertices)
     {
-        return false;
+        XMVECTOR vec = XMLoadFloat4(&v);
+        minV = XMVectorMin(minV, vec);
+        maxV = XMVectorMax(maxV, vec);
     }
 
-    UploadBuffer(m_vertexBuffer.GetAddressOf(), m_vertices.data(), m_vertices.size() * sizeof(XMFLOAT4));
-    UploadBuffer(m_tetBuffer.GetAddressOf(), m_tetIndices.data(), m_tetIndices.size() * sizeof(uint32_t));
-
-    CD3DX12_RANGE range(0, 0);
-    ThrowIfFailed(m_tetBuffer->Map(0, &range, reinterpret_cast<void**>(&m_tetBufferMapped)));
-
-    // Build a centering/scaling model matrix so meshes land near the origin at a reasonable scale.
-    XMFLOAT3 minP(FLT_MAX, FLT_MAX, FLT_MAX);
-    XMFLOAT3 maxP(-FLT_MAX, -FLT_MAX, -FLT_MAX);
-    for (auto& v : m_vertices)
-    {
-        minP.x = (std::min)(minP.x, v.x); minP.y = (std::min)(minP.y, v.y); minP.z = (std::min)(minP.z, v.z);
-        maxP.x = (std::max)(maxP.x, v.x); maxP.y = (std::max)(maxP.y, v.y); maxP.z = (std::max)(maxP.z, v.z);
-    }
-    XMVECTOR minV = XMLoadFloat3(&minP);
-    XMVECTOR maxV = XMLoadFloat3(&maxP);
-    XMVECTOR center = 0.5f * (minV + maxV);
-
+    XMVECTOR center = (minV + maxV) * 0.5f;
+    XMVECTOR extent = maxV - minV;
     XMFLOAT3 size;
-    XMStoreFloat3(&size, maxV - minV);
+    XMStoreFloat3(&size, extent);
     float maxExtent = (std::max)(size.x, (std::max)(size.y, size.z));
-    float scale = (maxExtent > 0.0001f) ? (3.5f / maxExtent) : 1.0f;
+    float scale = (maxExtent > 0.0001f) ? (2.0f / maxExtent) : 1.0f; // Normalize to radius ~1
 
+    // Bake normalization transform? 
+    // Yes, bake it so all meshes are roughly unit size, then SceneObject.WorldMatrix handles placement.
+    XMMATRIX transform = XMMatrixTranslationFromVector(-center) * XMMatrixScaling(scale, scale, scale);
+    
+    for(auto& v : outMesh.Vertices)
     {
-        wchar_t msg[512];
-        swprintf_s(msg, L"[LoadTetrahedralMesh] Loaded %zu vertices, %zu tets.\nBounds: Min(%.2f, %.2f, %.2f) Max(%.2f, %.2f, %.2f)\nScale: %.4f\n",
-            m_vertices.size(), m_tetIndices.size() / 4,
-            minP.x, minP.y, minP.z, maxP.x, maxP.y, maxP.z, scale);
-        OutputDebugStringW(msg);
+        XMVECTOR vec = XMLoadFloat4(&v);
+        vec = XMVector3TransformCoord(vec, transform);
+        // Reset W to 1.0 just in case
+        XMStoreFloat4(&v, vec);
+        v.w = 1.0f;
     }
 
-    XMMATRIX model = XMMatrixTranslationFromVector(-center) * XMMatrixScaling(scale, scale, scale);
-    XMStoreFloat4x4(&m_modelMatrix, XMMatrixTranspose(model));
     return true;
+}
+
+// Debug Logger
+void LogDebug(const std::string& msg) {
+    std::ofstream log("debug_log.txt", std::ios::app);
+    log << msg << std::endl;
+    OutputDebugStringA((msg + "\n").c_str());
+}
+
+void IntervalShadingTetrahedron::LoadScene(const std::wstring& scenePath)
+{
+    LogDebug("Attempting to load scene from: " + std::string(scenePath.begin(), scenePath.end()));
+    std::ifstream file(scenePath);
+    if (!file.is_open())
+    {
+        LogDebug("Failed to open scene file.");
+        throw std::runtime_error("Could not open scene.json");
+    }
+    
+    json j;
+    file >> j;
+    
+    // Light loading (already done in previous steps if kept, otherwise ignore for now)
+    if (j.contains("light"))
+    {
+        auto& l = j["light"];
+        auto& d = l["direction"];
+        m_constantBufferData.LightDir = XMFLOAT3(d[0], d[1], d[2]);
+    }
+    
+    // Cache for loaded meshes
+    std::map<std::string, MeshData> meshCache;
+    m_vertices.clear();
+    m_tetIndices.clear();
+    m_sceneObjects.clear();
+    
+    if (j.contains("objects"))
+    {
+        for (const auto& obj : j["objects"])
+        {
+            std::string meshName = obj["mesh"];
+            LogDebug("Found object with mesh: " + meshName);
+            
+            // Load Mesh if not cached
+            if (meshCache.find(meshName) == meshCache.end())
+            {
+                // Convert string to wstring path
+                // Assume assets folder relative
+                std::filesystem::path p(scenePath);
+                p.replace_filename(meshName);
+                
+                LogDebug("Loading mesh from: " + p.string());
+                
+                MeshData md;
+                if (!LoadTetrahedralMesh(p.wstring(), md))
+                {
+                    LogDebug("Failed to load mesh: " + meshName);
+                    continue; 
+                }
+                LogDebug("Loaded mesh. Vertices: " + std::to_string(md.Vertices.size()));
+                meshCache[meshName] = md;
+            }
+            
+            MeshData& md = meshCache[meshName];
+            
+            // Create Scene Object
+            SceneObject so;
+            so.MeshName = meshName;
+            
+            // Merge into Global Buffers
+            size_t vertexOffset = m_vertices.size();
+            size_t indexOffset = m_tetIndices.size(); // This is in uints (tets * 4)
+            
+            // Append Vertices
+            m_vertices.insert(m_vertices.end(), md.Vertices.begin(), md.Vertices.end());
+            
+            // Append Indices (re-indexed)
+            for(auto idx : md.Indices)
+            {
+                m_tetIndices.push_back(static_cast<uint32_t>(idx + vertexOffset));
+            }
+            
+            // Transform
+            auto& pos = obj["position"];
+            auto& rot = obj["rotation"];
+            auto& scl = obj["scale"];
+            
+            XMMATRIX m = XMMatrixScaling(scl[0], scl[1], scl[2]) * 
+                         XMMatrixRotationRollPitchYaw(rot[0], rot[1], rot[2]) *
+                         XMMatrixTranslation(pos[0], pos[1], pos[2]);
+            
+            XMStoreFloat4x4(&so.WorldMatrix, XMMatrixTranspose(m));
+            so.IndexCount = static_cast<UINT>(md.Indices.size());
+            so.MeshIndex = indexOffset; // Start index in global buffer
+            
+            m_sceneObjects.push_back(so);
+            LogDebug("Added SceneObject. Total objects: " + std::to_string(m_sceneObjects.size()));
+        }
+    }
+    
+    // Update Camera if present
+    if (j.contains("camera"))
+    {
+        auto& c = j["camera"];
+        auto& p = c["position"];
+        // Update m_cameraDistance etc? 
+        // The sample uses Orbit camera (Angle/Elevation).
+        // Converting arbitrary pos to spherical is annoying.
+        // Let's just set the camera pos directly for initial view if possible, 
+        // or just accept defaults. 
+        // For now, let's ignore camera from JSON to keep orbit controls simple.
+    }
 }
 
 void IntervalShadingTetrahedron::CreateIntervalTargets()
@@ -717,7 +885,7 @@ void IntervalShadingTetrahedron::BuildIntervalPipelineState()
     psoStream.RasterizerState = rasterizer;
     psoStream.DepthStencilState = depth;
     psoStream.RTVFormats = rtvFormats;
-    psoStream.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    psoStream.DSVFormat = DXGI_FORMAT_UNKNOWN;
     psoStream.SampleDesc = DefaultSampleDesc();
     psoStream.SampleMask = UINT_MAX;
 
@@ -894,7 +1062,7 @@ void IntervalShadingTetrahedron::UpdateConstants()
     XMStoreFloat4x4(&m_constantBufferData.InvViewProj, XMMatrixTranspose(invViewProj));
     m_constantBufferData.NearPlane = kNearPlane;
     m_constantBufferData.Density = kDefaultDensity;
-    m_constantBufferData.TetCount = static_cast<uint32_t>(m_tetIndices.size() / 4);
+    // m_constantBufferData.TetCount = ... // Per object
     m_constantBufferData.RandomizeOrder = m_randomizeDrawOrder ? 1u : 0u;
     XMStoreFloat3(&m_constantBufferData.CameraPos, cameraPos);
     m_constantBufferData.Time = static_cast<float>(GetTime());
@@ -902,7 +1070,20 @@ void IntervalShadingTetrahedron::UpdateConstants()
     XMVECTOR lightDir = XMVector3Normalize(XMLoadFloat3(&m_constantBufferData.LightDir));
     XMStoreFloat3(&m_constantBufferData.LightDir, lightDir);
 
-    std::memcpy(m_cbvDataBegin + m_cbStride * m_frameIndex, &m_constantBufferData, sizeof(m_constantBufferData));
+    // Loop through objects and update CB
+    UINT objIndex = 0;
+    for (const auto& obj : m_sceneObjects)
+    {
+        if (objIndex >= 64) break;
+        
+        m_constantBufferData.Model = obj.WorldMatrix;
+        m_constantBufferData.TetCount = obj.IndexCount / 4;
+        m_constantBufferData.TetOffset = static_cast<uint32_t>(obj.MeshIndex); // Index buffer offset
+        
+        UINT64 offset = (m_frameIndex * 64 + objIndex) * m_cbStride;
+        std::memcpy(m_cbvDataBegin + offset, &m_constantBufferData, sizeof(m_constantBufferData));
+        objIndex++;
+    }
 }
 
 void IntervalShadingTetrahedron::MoveToNextFrame()
@@ -992,9 +1173,22 @@ void IntervalShadingTetrahedron::OpenMeshFile()
 
     if (GetOpenFileNameW(&ofn))
     {
-        WaitForGpu(); 
-        if (LoadTetrahedralMesh(filename))
+        WaitForGpu();
+        MeshData md;
+        if (LoadTetrahedralMesh(filename, md))
         {
+            // Reset Scene to single object
+            m_vertices = md.Vertices;
+            m_tetIndices = md.Indices;
+            
+            m_sceneObjects.clear();
+            SceneObject so;
+            so.MeshName = "UserSelected";
+            so.WorldMatrix = m_modelMatrix; 
+            so.IndexCount = static_cast<UINT>(m_tetIndices.size());
+            so.MeshIndex = 0;
+            m_sceneObjects.push_back(so);
+
             CreateSrvHeap();
             UpdateConstants();
         }

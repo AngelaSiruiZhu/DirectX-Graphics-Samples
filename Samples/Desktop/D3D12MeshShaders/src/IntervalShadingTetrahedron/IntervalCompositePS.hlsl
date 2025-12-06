@@ -16,6 +16,8 @@ struct Constants
     uint RandomizeOrder;
     float3 CameraPos;
     float Time;
+    float3 LightDir;
+    uint TetOffset;
 };
 
 cbuffer SceneConstants : register(b0)
@@ -157,8 +159,8 @@ float4 main(PSIn input) : SV_Target
         float cloudTransmittance = 1.0;
         float3 accumulatedLight = 0;
         
-        float3 lightPos = float3(0,0,0);
-        float3 lightColor = float3(1.0, 0.9, 0.7) * 0.05; 
+        float3 lightDir = normalize(Globals.LightDir);
+        float3 lightColor = float3(1.0, 0.9, 0.7) * 2.0; // Boosted intensity
 
         if (front < back) {
             // Reconstruct ray direction
@@ -169,6 +171,11 @@ float4 main(PSIn input) : SV_Target
             worldFar /= worldFar.w;
             
             float3 rayDir = normalize(worldFar.xyz - Globals.CameraPos);
+            
+            // Phase function (Forward scattering)
+            float cosTheta = dot(rayDir, lightDir);
+            float g = 0.6; // Scattering asymmetry
+            float phase = HenyeyGreenstein(g, cosTheta);
             
             float dist = front;
             float stepSize = 0.02; 
@@ -183,24 +190,20 @@ float4 main(PSIn input) : SV_Target
                 float density = saturate(noiseDensity * 2.0) * edgeFade; 
 
                 if (density > 0.0001) { 
-                    float distToLight = length(p);
-                    
-                    // Shadow march towards light (3 samples)
+                    // Shadow march towards light (3 samples along lightDir)
                     float shadowDensity = 0;
-                    float3 s1 = p * 0.75;
-                    float3 s2 = p * 0.50;
-                    float3 s3 = p * 0.25;
-                    shadowDensity += GetDensity(s1 * Globals.Density);
-                    shadowDensity += GetDensity(s2 * Globals.Density);
-                    shadowDensity += GetDensity(s3 * Globals.Density);
+                    // Use larger steps for shadow to escape volume faster
+                    shadowDensity += GetDensity( (p + lightDir * 0.5) * Globals.Density);
+                    shadowDensity += GetDensity( (p + lightDir * 1.0) * Globals.Density);
+                    shadowDensity += GetDensity( (p + lightDir * 2.0) * Globals.Density);
                     
-                    float lightTransmittance = exp(-shadowDensity * 1.5); // Absorption along light ray
-                    float attenuation = 1.0 / (0.1 + distToLight * distToLight * 0.05); 
+                    // Reduced absorption coefficient for shadows (0.5 instead of 1.5)
+                    float lightTransmittance = exp(-shadowDensity * 0.5); 
                     
-                    float3 sunColor = float3(1.0, 0.95, 0.9) * 0.5; //directional light
-                    float3 ambient = float3(0.6,0.6,0.6); // ambient
+                    float3 sunDirectColor = lightColor * lightTransmittance * phase;
+                    float3 ambient = float3(0.1, 0.15, 0.3) * 0.5 + float3(0.5,0.5,0.5)*0.2; // Sky ambient
                     
-                    float3 incoming = (lightColor * lightTransmittance * attenuation) + sunColor + ambient;
+                    float3 incoming = sunDirectColor + ambient; 
                     
                     float stepTransmittance = exp(-density * stepSize * 1.0);
                     float3 scattered = incoming * density * stepSize;
@@ -216,7 +219,8 @@ float4 main(PSIn input) : SV_Target
         float3 finalCloudColor = accumulatedLight + skyColor * cloudTransmittance;
 
         // Screen Space God Rays using Radial Blur
-        float4 lightClip = mul(float4(lightPos, 1.0), Globals.ViewProj); // light source screen position
+        // Approximate light source screen position for directional light (far away in lightDir)
+        float4 lightClip = mul(float4(Globals.CameraPos + lightDir * 1000.0, 1.0), Globals.ViewProj); 
         float2 lightScreen = lightClip.xy / lightClip.w;
         lightScreen = lightScreen * 0.5 + 0.5;
         lightScreen.y = 1.0 - lightScreen.y;
@@ -245,15 +249,15 @@ float4 main(PSIn input) : SV_Target
             if (sFront < sBack) // Inside volume
             {
                 // Sample 3 points to catch internal density structure
-                float3 rayDir = normalize(GetWorldPos(coord, sBack) - Globals.CameraPos);
+                float3 rayDirEye = normalize(GetWorldPos(coord, sBack) - Globals.CameraPos); // Renamed to avoid clash
                 float step = (sBack - sFront) / 3.0;
                 float maxDensity = 0;
                 
                 // Check 3 points along the ray segment inside the box
                 // use max() because if ANY part is dense, it blocks the light.
-                float3 p1 = Globals.CameraPos + rayDir * (sFront + step * 0.5);
-                float3 p2 = Globals.CameraPos + rayDir * (sFront + step * 1.5);
-                float3 p3 = Globals.CameraPos + rayDir * (sFront + step * 2.5);
+                float3 p1 = Globals.CameraPos + rayDirEye * (sFront + step * 0.5);
+                float3 p2 = Globals.CameraPos + rayDirEye * (sFront + step * 1.5);
+                float3 p3 = Globals.CameraPos + rayDirEye * (sFront + step * 2.5);
                 
                 maxDensity = max(maxDensity, GetDensityLowQ(p1 * Globals.Density));
                 maxDensity = max(maxDensity, GetDensityLowQ(p2 * Globals.Density));
@@ -263,9 +267,10 @@ float4 main(PSIn input) : SV_Target
                 float block = smoothstep(0.2, 0.6, maxDensity);
                 sampleTransmittance = 1.0 - block;
                 
-                float distToLight = length(p2); // Use middle point distance
-                float attenuation = 1.0 / (0.1 + distToLight * distToLight * 0.2);
-                sampleTransmittance *= attenuation;
+                // No distance attenuation for directional light god rays
+                // float distToLight = length(p2); 
+                // float attenuation = 1.0 / (0.1 + distToLight * distToLight * 0.2);
+                // sampleTransmittance *= attenuation;
             }
             
             godRayColor += sampleTransmittance * illuminationDecay * weight;

@@ -15,7 +15,10 @@ struct Constants
     uint DebugMode;
     uint TetCount;
     uint RandomizeOrder;
-    float3 Padding;
+    float3 CameraPos;
+    float Time;
+    float3 LightDir;
+    uint TetOffset;
 };
 
 cbuffer SceneConstants : register(b0)
@@ -278,7 +281,8 @@ void main(
     {
         for (uint i = 0; i < 4; ++i)
         {
-            uint idx = TetIndices[tetIndex * 4 + i];
+            // Use TetOffset to find the correct indices in the global buffer
+            uint idx = TetIndices[Globals.TetOffset + tetIndex * 4 + i];
             tet.pos[i] = mul(Vertices[idx], Globals.Model);
             tet.pos[i] = mul(tet.pos[i], Globals.View);
         }

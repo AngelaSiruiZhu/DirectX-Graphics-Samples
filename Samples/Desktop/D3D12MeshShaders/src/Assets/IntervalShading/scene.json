@@ -1,0 +1,37 @@
+{
+    "camera": {
+        "position": [0.0, -10.0, 0.0],
+        "target": [0.0, 10.0, 5.0]
+    },
+    "light": {
+        "direction": [0.2, -1.0, 0.2],
+        "color": [1.0, 0.9, 0.8],
+        "intensity": 2.0
+    },
+    "objects": [
+        {
+            "mesh": "cloud_shell.vtk",
+            "position": [0.0, 0.0, 0.0],
+            "rotation": [0.0, 0.0, 0.0],
+            "scale": [1.0, 1.0, 1.0]
+        },
+        {
+            "mesh": "cloud_shell.vtk",
+            "position": [-5.0, 2.0, 4.0],
+            "rotation": [0.5, 1.0, 0.0],
+            "scale": [0.8, 0.7, 0.8]
+        },
+        {
+            "mesh": "cloud_shell.vtk",
+            "position": [6.0, -1.0, 3.0],
+            "rotation": [0.0, 2.0, 0.5],
+            "scale": [1.2, 0.9, 1.1]
+        },
+        {
+            "mesh": "cloud_shell.vtk",
+            "position": [0.0, 5.0, -5.0],
+            "rotation": [1.0, 0.0, 0.0],
+            "scale": [1.5, 0.5, 1.5]
+        }
+    ]
+}
