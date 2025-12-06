@@ -23,6 +23,8 @@ using DirectX::XMMatrixInverse;
 namespace
 {
     const wchar_t* kTetPathCandidates[] = {
+        L"..\\..\\Assets\\IntervalShading\\cloud_cluster_massive.vtk", // massive cluster
+        L"..\\..\\..\\Assets\\IntervalShading\\cloud_cluster_massive.vtk", // massive cluster (bin)
         L"..\\..\\Assets\\IntervalShading\\bunny.vtk",        // from src folder
         L"..\\..\\..\\Assets\\IntervalShading\\bunny.vtk", // from bin/x64/Config
         L"..\\..\\..\\..\\Assets\\IntervalShading\\bunny.vtk", // from bin/x64/Debug

@@ -436,27 +436,122 @@ function getDensity(x, y, z) {
     }
 }
 
+    function generateCluster() {
+        console.log("Generating Constructive Cluster Cloud...");
+        
+        // Configuration for the "Cloud Box"
+        // Clouds are usually wider than they are tall.
+        const sizeX = 4.0;
+        const sizeY = 1.0; // Flat
+        const sizeZ = 3.0;
+        
+        // Grid for "planting" seeds
+        // We scan a coarse grid in this box domain.
+        // FURTHER REDUCED gridStep to plant puffs much closer together (Dense packing)
+        const gridStep = 0.25; 
+        
+        const countX = Math.floor(sizeX / gridStep);
+        const countY = Math.floor(sizeY / gridStep);
+        const countZ = Math.floor(sizeZ / gridStep);
+        
+        // Base Puff Geometry: Simple low-poly sphere (IcoSphere - 1 subdivision or just base 12 verts)
+        const t = (1.0 + Math.sqrt(5.0)) / 2.0;
+        const baseVerts = [
+            [-1,  t,  0], [ 1,  t,  0], [-1, -t,  0], [ 1, -t,  0],
+            [ 0, -1,  t], [ 0,  1,  t], [ 0, -1, -t], [ 0,  1, -t],
+            [ t,  0, -1], [ t,  0,  1], [-t,  0, -1], [-t,  0,  1]
+        ].map(v => {
+            let l = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+            return [v[0]/l, v[1]/l, v[2]/l];
+        });
+
+        const faces = [
+            [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+            [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+            [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+            [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]
+        ];
+
+        console.log(`Scanning domain [${countX}x${countY}x${countZ}]...`);
+        let puffsPlanted = 0;
+
+        for (let x = 0; x < countX; x++) {
+            for (let y = 0; y < countY; y++) {
+                for (let z = 0; z < countZ; z++) {
+                    
+                    // ... (coordinates setup) ...
+                    // Normalized coordinates for Noise sampling
+                    let nx = (x / countX) * 2 - 1; 
+                    let ny = (y / countY) * 2 - 1;
+                    let nz = (z / countZ) * 2 - 1;
+                    
+                    let wx = (x * gridStep) - (sizeX * 0.5);
+                    let wy = (y * gridStep) - (sizeY * 0.5);
+                    let wz = (z * gridStep) - (sizeZ * 0.5);
+
+                    // 1. Noise Check (The "Shape Function")
+                    // Increase noise frequency slightly to get more small clumps
+                    let n = fbm(nx * 1.8, ny * 1.8, nz * 1.8);
+                    let dist = Math.sqrt(nx*nx*0.2 + ny*ny + nz*nz*0.2); 
+                    let density = n - (dist * 0.4); // Relaxed falloff
+                    
+                    // Even Lower threshold to fill volume
+                    if (density > -0.2) { 
+                        puffsPlanted++;
+                        
+                        // MASSIVE Scale: 2.0x to 3.0x grid spacing.
+                        // This guarantees deep interpenetration.
+                        let scale = (gridStep * 2.0) + (Math.random() * gridStep * 1.0);
+                        
+                        // Add Center Vertex for this Puff
+                        let centerIdx = vertices.length;
+                        vertices.push([wx, wy, wz]);
+                        
+                        // Add Surface Vertices
+                        let surfaceIndices = [];
+                        for(let i=0; i<12; i++) {
+                            let sv = baseVerts[i];
+                            // Apply simple rotation/jitter?
+                            // Just translation + scale for now.
+                            // Jitter the vertex slightly for irregularity
+                            let jx = (Math.random()-0.5) * 0.2;
+                            let jy = (Math.random()-0.5) * 0.2;
+                            let jz = (Math.random()-0.5) * 0.2;
+                            
+                            vertices.push([
+                                wx + (sv[0]+jx) * scale, 
+                                wy + (sv[1]+jy) * scale, 
+                                wz + (sv[2]+jz) * scale
+                            ]);
+                            surfaceIndices.push(centerIdx + 1 + i);
+                        }
+                        
+                        // Create 20 Tets connecting Surface Faces to Center
+                        for(const face of faces) {
+                            // Face is [v1, v2, v3] (indices into baseVerts 0..11)
+                            // We map them to our new vertices
+                            let i0 = centerIdx;
+                            let i1 = surfaceIndices[face[0]];
+                            let i2 = surfaceIndices[face[1]];
+                            let i3 = surfaceIndices[face[2]];
+                            
+                            indices.push([i0, i1, i2, i3]);
+                        }
+                    }
+                }
+            }
+        }
+        console.log(`Planted ${puffsPlanted} puffs.`);
+    }
+
 if (CONFIG.mode === 'soup') {
     generateSoup();
 } else if (CONFIG.mode === 'structure') {
     generateStructure();
+} else if (CONFIG.mode === 'cluster') {
+    generateCluster();
 } else {
-    // Default grid generate - assuming it exists in previous code scope or we fail.
-    // Since I cannot see it, I will inject a dummy one if it was missing or ensure the call works.
-    // But since this is a REPLACE block, I must assume the original 'generate' was preserved
-    // if I didn't overwrite it.
-    // The previous 'replace' block was weird. I'm overwriting generateSoup and generateStructure logic.
-    // I need to be careful not to delete 'generate()'. 
-    
-    // I will try to call the original generate() if it exists.
-    // Since I'm essentially rewriting the 'soup' function and adding 'structure', 
-    // I'll trust the 'generate()' function is defined in the block I'm NOT replacing
-    // or I'll implement a basic one here just in case? 
-    // No, 'replace' replaces exact string.
-    
-    // WAIT. My 'old_string' in the tool call MUST match exact file content.
-    // I don't have the full file content.
-    // I will abort and read the file first to be safe.
+    generate();
 }
 
 console.log(`Vertices: ${vertices.length}`);
