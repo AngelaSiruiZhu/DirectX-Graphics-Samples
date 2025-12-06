@@ -23,6 +23,8 @@ using DirectX::XMMatrixInverse;
 namespace
 {
     const wchar_t* kTetPathCandidates[] = {
+        L"..\\..\\Assets\\IntervalShading\\cloud_structure.vtk", // structure cloud
+        L"..\\..\\..\\Assets\\IntervalShading\\cloud_structure.vtk", // structure cloud (bin)
         L"..\\..\\Assets\\IntervalShading\\cloud_shell.vtk", // shell cloud
         L"..\\..\\..\\Assets\\IntervalShading\\cloud_shell.vtk", // shell cloud (bin)
         L"..\\..\\Assets\\IntervalShading\\cloud_skeleton_sparse.vtk", // sparse skeleton
