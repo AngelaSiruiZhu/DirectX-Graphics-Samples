@@ -14,7 +14,7 @@ const CONFIG = {
     jitter: 0.6,       // Random vertex displacement (0.0 to 1.0)
     smoothIters: 5,    // Laplacian smoothing iterations
     smoothStr: 0.6,    // Smoothing strength (0.0 to 1.0)
-    mode: 'grid'       // 'grid', 'soup', or 'structure'
+    mode: 'grid'       // 'grid', 'soup', 'structure', 'cluster', 'skeleton', or 'fragment'
 };
 
 // Parse command line args
@@ -34,7 +34,7 @@ for (let i = 0; i < args.length; i++) {
     else if (arg === '--smoothStr') CONFIG.smoothStr = parseFloat(args[++i]);
     else if (arg === '--mode') CONFIG.mode = args[++i];
     else if (arg === '--help') {
-        console.log("Usage: node generate_cloud.js ... [--mode <grid|soup|structure>]");
+        console.log("Usage: node generate_cloud.js ... [--mode <grid|soup|structure|cluster|skeleton|fragment>]");
         process.exit(0);
     }
 }
@@ -568,8 +568,10 @@ function getDensity(x, y, z) {
         
         // Generate Point Cloud based on lobes
         // We want points ON the surface and INSIDE the lobes.
+        // Generate Point Cloud based on lobes
+        // We want points ON the surface and INSIDE the lobes.
         const points = [];
-        const numPoints = 800; // Moderate point count to balance detail and performance
+        const numPoints = 1500; // Increased point count for denser structure
         
         for(let i=0; i<numPoints; i++) {
             // Pick a random lobe
@@ -585,10 +587,9 @@ function getDensity(x, y, z) {
                 d = u*u + v*v + w*w;
             } while(d > 1.0);
             
-            // Push towards surface for detail?
-            // Bias towards surface to make the cloud look more 'shell-like'
+            // Bias points towards the surface for a more shell-like structure
             let r = Math.sqrt(d); 
-            r = Math.pow(r, 0.4); // Stronger bias towards surface for shell structure
+            r = Math.pow(r, 0.4); // Stronger bias towards surface
             
             points.push([
                 lobe.x + u * lobe.r * r,
@@ -608,20 +609,62 @@ function getDensity(x, y, z) {
             return dx*dx + dy*dy + dz*dz;
         }
 
-        // Add points to vertex list
+        const maxEdgeLen = 0.9; // Used for point relaxation neighborhood
+        
+        // --- Point Relaxation (for uniformity and roundedness) ---
+        const numRelaxIters = 5; // Number of relaxation iterations
+        const relaxStrength = 0.5; // How much to move points towards average neighbor position
+
+        console.log(`Relaxing ${points.length} points for ${numRelaxIters} iterations...`);
+
+        for (let iter = 0; iter < numRelaxIters; iter++) {
+            const newPoints = points.map(p => [...p]); // Clone points for simultaneous update
+
+            for (let i = 0; i < points.length; i++) {
+                let sumX = 0, sumY = 0, sumZ = 0;
+                let neighborCount = 0;
+
+                for (let j = 0; j < points.length; j++) {
+                    if (i === j) continue;
+
+                    // Only consider points within a certain radius as 'neighbors' for relaxation
+                    if (distSq(points[i], points[j]) < (maxEdgeLen * 2.0) * (maxEdgeLen * 2.0)) {
+                        sumX += points[j][0];
+                        sumY += points[j][1];
+                        sumZ += points[j][2];
+                        neighborCount++;
+                    }
+                }
+
+                if (neighborCount > 0) {
+                    let avgX = sumX / neighborCount;
+                    let avgY = sumY / neighborCount;
+                    let avgZ = sumZ / neighborCount;
+
+                    newPoints[i][0] += (avgX - points[i][0]) * relaxStrength;
+                    newPoints[i][1] += (avgY - points[i][1]) * relaxStrength;
+                    newPoints[i][2] += (avgZ - points[i][2]) * relaxStrength;
+                }
+            }
+            // Update points array for next iteration
+            for(let i=0; i<points.length; i++) {
+                points[i] = newPoints[i];
+            }
+        }
+        // Add relaxed points to vertex list
         for(let p of points) {
             vertices.push(p);
         }
         
-        const k = 10; // Neighbors to check
-        const maxEdgeLen = 0.7; // Tighter connections
+        let kLocal = 12; // Adjusted k for more connections
+        let maxEdgeLenLocal = 1.2; // Increased for larger, more rounded tets
         
         for(let i=0; i<vertices.length; i++) {
             let myNeighbors = [];
             for(let j=0; j<vertices.length; j++) {
                 if(i===j) continue;
                 let d2 = distSq(vertices[i], vertices[j]);
-                if (d2 < maxEdgeLen*maxEdgeLen) {
+                if (d2 < maxEdgeLenLocal*maxEdgeLenLocal) {
                     myNeighbors.push({idx: j, d2: d2});
                 }
             }
@@ -629,15 +672,11 @@ function getDensity(x, y, z) {
             myNeighbors.sort((a,b) => a.d2 - b.d2);
             
             // Keep top k
-            if (myNeighbors.length > k) myNeighbors.length = k;
+            if (myNeighbors.length > kLocal) myNeighbors.length = kLocal;
             
             // Form Tets
-            // Decimate logic:
-            // We want to keep valid tets but not ALL valid tets.
-            // A much more aggressive decimation is needed if we have many points.
-            // 800 points with k=10 can produce huge numbers.
-            // Let's keep about 2% of valid combinations.
-            const decimationProbability = 0.02; 
+            // Drastically increase decimation probability to reduce tet count to 20k-50k
+            const decimationProbability = 0.95; // Skip 95% of valid combinations
             
             for (let a=0; a<myNeighbors.length; a++) {
                 for (let b=a+1; b<myNeighbors.length; b++) {
@@ -652,11 +691,11 @@ function getDensity(x, y, z) {
                         let dBC = distSq(vertices[idxB], vertices[idxC]);
                         let dCA = distSq(vertices[idxC], vertices[idxA]);
                         
-                        let limit = maxEdgeLen*maxEdgeLen;
+                        let limit = maxEdgeLenLocal*maxEdgeLenLocal;
                         
                         if (dAB < limit && dBC < limit && dCA < limit) {
                             // Valid Tet candidate
-                            if (Math.random() > decimationProbability) continue; // Skip most
+                            if (Math.random() < decimationProbability) continue; // Skip based on probability
                             
                             indices.push([i, idxA, idxB, idxC]);
                         }

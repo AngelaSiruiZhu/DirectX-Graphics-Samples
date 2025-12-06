@@ -23,6 +23,8 @@ using DirectX::XMMatrixInverse;
 namespace
 {
     const wchar_t* kTetPathCandidates[] = {
+        L"..\\..\\Assets\\IntervalShading\\cloud_skeleton_sparse.vtk", // sparse skeleton
+        L"..\\..\\..\\Assets\\IntervalShading\\cloud_skeleton_sparse.vtk", // sparse skeleton (bin)
         L"..\\..\\Assets\\IntervalShading\\cloud_skeleton_dense.vtk", // dense skeleton
         L"..\\..\\..\\Assets\\IntervalShading\\cloud_skeleton_dense.vtk", // dense skeleton (bin)
         L"..\\..\\Assets\\IntervalShading\\cloud_cluster_massive.vtk", // massive cluster
@@ -57,6 +59,7 @@ IntervalShadingTetrahedron::IntervalShadingTetrahedron(UINT width, UINT height, 
     ZeroMemory(m_fenceValues, sizeof(m_fenceValues));
     ZeroMemory(&m_constantBufferData, sizeof(m_constantBufferData));
     m_constantBufferData.DebugMode = 5; // Default to Volumetric Cloud
+    m_constantBufferData.LightDir = XMFLOAT3(0.5f, -0.8f, 0.2f); // Default sun-like direction (top-right-front)
 }
 
 void IntervalShadingTetrahedron::OnInit()
@@ -891,6 +894,9 @@ void IntervalShadingTetrahedron::UpdateConstants()
     m_constantBufferData.RandomizeOrder = m_randomizeDrawOrder ? 1u : 0u;
     XMStoreFloat3(&m_constantBufferData.CameraPos, cameraPos);
     m_constantBufferData.Time = static_cast<float>(GetTime());
+
+    XMVECTOR lightDir = XMVector3Normalize(XMLoadFloat3(&m_constantBufferData.LightDir));
+    XMStoreFloat3(&m_constantBufferData.LightDir, lightDir);
 
     std::memcpy(m_cbvDataBegin + m_cbStride * m_frameIndex, &m_constantBufferData, sizeof(m_constantBufferData));
 }
