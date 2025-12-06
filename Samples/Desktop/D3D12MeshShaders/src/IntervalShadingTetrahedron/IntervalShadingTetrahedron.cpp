@@ -59,9 +59,9 @@ IntervalShadingTetrahedron::IntervalShadingTetrahedron(UINT width, UINT height, 
     m_srvDescriptorSize(0),
     m_rtvDescriptorSize(0),
     m_cbvDataBegin(nullptr),
-    m_cameraAngle(0.0f),
-    m_cameraElevation(0.35f),
-    m_cameraDistance(15.0f), // Further back to see the scene
+    m_cameraAngle(1.222f),         // 70 degrees rotation around left axis (Y-axis)
+    m_cameraElevation(-0.473f),    // 0.40f - 0.873f (-50 degrees in radians ≈ 0.873)
+    m_cameraDistance(35.0f), // Much further back to see the scene
     m_randomizeDrawOrder(false)
 {
     ZeroMemory(m_fenceValues, sizeof(m_fenceValues));
@@ -376,7 +376,7 @@ void IntervalShadingTetrahedron::PopulateCommandList()
 
         m_commandList->SetGraphicsRootSignature(m_intervalRootSignature.Get());
         m_commandList->SetPipelineState(m_intervalPipelineState.Get());
-        // m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
+        m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
         m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
         
         // Dispatch per object
@@ -680,9 +680,14 @@ void IntervalShadingTetrahedron::LoadScene(const std::wstring& scenePath)
             auto& rot = obj["rotation"];
             auto& scl = obj["scale"];
             
+            // Adjust Y position to be around same height as highest cloud (Y = -9.5) with variations
+            float baseHeight = -9.5f;
+            float heightVariation = static_cast<float>((m_sceneObjects.size() % 3)) * 0.5f;  // 0.0, 0.5, 1.0
+            float adjustedY = baseHeight + heightVariation - 0.5f;  // Range: -10.0 to -9.0
+            
             XMMATRIX m = XMMatrixScaling(scl[0], scl[1], scl[2]) * 
                          XMMatrixRotationRollPitchYaw(rot[0], rot[1], rot[2]) *
-                         XMMatrixTranslation(pos[0], pos[1], pos[2]);
+                         XMMatrixTranslation(pos[0], adjustedY, pos[2]);
             
             XMStoreFloat4x4(&so.WorldMatrix, XMMatrixTranspose(m));
             so.IndexCount = static_cast<UINT>(md.Indices.size());
@@ -1045,7 +1050,7 @@ void IntervalShadingTetrahedron::UpdateConstants()
     float z = r * sinf(m_cameraAngle);
 
     XMVECTOR cameraPos = XMVectorSet(x, y, z, 1.0f);
-    XMVECTOR target = XMVectorZero();
+    XMVECTOR target = XMVectorSet(0.0f, -2.0f, 0.0f, 1.0f);  // Moved down along Y axis
     XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
     if (cosf(m_cameraElevation) < 0.0f)
