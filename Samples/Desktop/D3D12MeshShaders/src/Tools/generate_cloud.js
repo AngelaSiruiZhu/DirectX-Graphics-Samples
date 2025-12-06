@@ -544,14 +544,140 @@ function getDensity(x, y, z) {
         console.log(`Planted ${puffsPlanted} puffs.`);
     }
 
+    function generateSkeleton() {
+        console.log("Generating Cloud Skeleton (Alpha Shape approximation)...");
+        
+        // 1. Plant Seeds
+        // Main Lobes (Large, central)
+        const mainLobes = [];
+        const numLobes = 4 + Math.floor(Math.random() * 3); // 4 to 6 lobes
+        
+        // Bounds
+        const rangeX = 3.0; 
+        const rangeY = 0.8;
+        const rangeZ = 2.0;
+
+        for(let i=0; i<numLobes; i++) {
+            mainLobes.push({
+                x: (Math.random() - 0.5) * rangeX,
+                y: (Math.random() - 0.5) * rangeY,
+                z: (Math.random() - 0.5) * rangeZ,
+                r: 0.8 + Math.random() * 0.5 // Radius
+            });
+        }
+        
+        // Generate Point Cloud based on lobes
+        // We want points ON the surface and INSIDE the lobes.
+        const points = [];
+        const numPoints = 800; // Moderate point count to balance detail and performance
+        
+        for(let i=0; i<numPoints; i++) {
+            // Pick a random lobe
+            let lobe = mainLobes[Math.floor(Math.random() * mainLobes.length)];
+            
+            // Random point in sphere
+            // Rejection sampling
+            let u,v,w,d;
+            do {
+                u = Math.random() * 2 - 1;
+                v = Math.random() * 2 - 1;
+                w = Math.random() * 2 - 1;
+                d = u*u + v*v + w*w;
+            } while(d > 1.0);
+            
+            // Push towards surface for detail?
+            // Bias towards surface to make the cloud look more 'shell-like'
+            let r = Math.sqrt(d); 
+            r = Math.pow(r, 0.4); // Stronger bias towards surface for shell structure
+            
+            points.push([
+                lobe.x + u * lobe.r * r,
+                lobe.y + v * lobe.r * r,
+                lobe.z + w * lobe.r * r
+            ]);
+        }
+        
+        // 2. Connect Neighbors to form Tets
+        // Brute force nearest neighbors
+        
+        // Distance Helper
+        function distSq(a, b) {
+            let dx = a[0]-b[0];
+            let dy = a[1]-b[1];
+            let dz = a[2]-b[2];
+            return dx*dx + dy*dy + dz*dz;
+        }
+
+        // Add points to vertex list
+        for(let p of points) {
+            vertices.push(p);
+        }
+        
+        const k = 10; // Neighbors to check
+        const maxEdgeLen = 0.7; // Tighter connections
+        
+        for(let i=0; i<vertices.length; i++) {
+            let myNeighbors = [];
+            for(let j=0; j<vertices.length; j++) {
+                if(i===j) continue;
+                let d2 = distSq(vertices[i], vertices[j]);
+                if (d2 < maxEdgeLen*maxEdgeLen) {
+                    myNeighbors.push({idx: j, d2: d2});
+                }
+            }
+            // Sort by distance
+            myNeighbors.sort((a,b) => a.d2 - b.d2);
+            
+            // Keep top k
+            if (myNeighbors.length > k) myNeighbors.length = k;
+            
+            // Form Tets
+            // Decimate logic:
+            // We want to keep valid tets but not ALL valid tets.
+            // A much more aggressive decimation is needed if we have many points.
+            // 800 points with k=10 can produce huge numbers.
+            // Let's keep about 2% of valid combinations.
+            const decimationProbability = 0.02; 
+            
+            for (let a=0; a<myNeighbors.length; a++) {
+                for (let b=a+1; b<myNeighbors.length; b++) {
+                    for (let c=b+1; c<myNeighbors.length; c++) {
+                        
+                        let idxA = myNeighbors[a].idx;
+                        let idxB = myNeighbors[b].idx;
+                        let idxC = myNeighbors[c].idx;
+                        
+                        // Check if A,B,C are close to each other (clique check)
+                        let dAB = distSq(vertices[idxA], vertices[idxB]);
+                        let dBC = distSq(vertices[idxB], vertices[idxC]);
+                        let dCA = distSq(vertices[idxC], vertices[idxA]);
+                        
+                        let limit = maxEdgeLen*maxEdgeLen;
+                        
+                        if (dAB < limit && dBC < limit && dCA < limit) {
+                            // Valid Tet candidate
+                            if (Math.random() > decimationProbability) continue; // Skip most
+                            
+                            indices.push([i, idxA, idxB, idxC]);
+                        }
+                    }
+                }
+            }
+        }
+        
+        console.log(`Generated Skeleton with ${indices.length} tets.`);
+    }
+
 if (CONFIG.mode === 'soup') {
     generateSoup();
 } else if (CONFIG.mode === 'structure') {
     generateStructure();
 } else if (CONFIG.mode === 'cluster') {
     generateCluster();
+} else if (CONFIG.mode === 'skeleton') {
+    generateSkeleton();
 } else {
-    generate();
+    // Default or Fallback
 }
 
 console.log(`Vertices: ${vertices.length}`);
