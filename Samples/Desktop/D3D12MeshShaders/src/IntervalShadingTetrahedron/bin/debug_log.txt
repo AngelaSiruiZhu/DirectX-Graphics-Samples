@@ -1,0 +1,102 @@
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_shell.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_shell.vtk
+Loaded mesh. Vertices: 7520
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 4
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_shell.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_shell.vtk
+Loaded mesh. Vertices: 7520
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 4
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_shell.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_shell.vtk
+Loaded mesh. Vertices: 7520
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_structure.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_structure.vtk
+Loaded mesh. Vertices: 1690
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 8
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_shell.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_shell.vtk
+Loaded mesh. Vertices: 7520
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_structure.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_structure.vtk
+Loaded mesh. Vertices: 1690
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_shell.vtk
+Added SceneObject. Total objects: 8
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_structure.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_structure.vtk
+Loaded mesh. Vertices: 1690
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 8
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_structure.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_structure.vtk
+Loaded mesh. Vertices: 1690
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_structure.vtk
+Added SceneObject. Total objects: 8

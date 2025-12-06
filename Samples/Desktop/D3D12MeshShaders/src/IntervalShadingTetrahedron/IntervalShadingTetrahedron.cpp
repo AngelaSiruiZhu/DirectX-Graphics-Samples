@@ -260,6 +260,10 @@ void IntervalShadingTetrahedron::LoadAssets()
         m_sceneObjects.push_back(so);
     }
 
+    // Upload Geometry (merged from all objects)
+    UploadBuffer(&m_vertexBuffer, m_vertices.data(), m_vertices.size() * sizeof(XMFLOAT4));
+    UploadBuffer(&m_tetBuffer, m_tetIndices.data(), m_tetIndices.size() * sizeof(uint32_t));
+
     CreateIntervalTargets();
     CreateSrvHeap();
     BuildIntervalPipelineState();
