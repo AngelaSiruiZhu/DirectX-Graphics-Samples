@@ -544,167 +544,198 @@ function getDensity(x, y, z) {
         console.log(`Planted ${puffsPlanted} puffs.`);
     }
 
-    function generateSkeleton() {
-        console.log("Generating Cloud Skeleton (Alpha Shape approximation)...");
+    function generateShell() {
+        console.log("Generating Hollow Shell Cloud...");
         
-        // 1. Plant Seeds
-        // Main Lobes (Large, central)
+        // 1. Define Lobe Structures (The base shape)
         const mainLobes = [];
-        const numLobes = 4 + Math.floor(Math.random() * 3); // 4 to 6 lobes
-        
-        // Bounds
-        const rangeX = 3.0; 
-        const rangeY = 0.8;
-        const rangeZ = 2.0;
+        const numLobes = 5; 
+        const rangeX = 3.0, rangeY = 0.5, rangeZ = 2.0;
 
         for(let i=0; i<numLobes; i++) {
             mainLobes.push({
                 x: (Math.random() - 0.5) * rangeX,
                 y: (Math.random() - 0.5) * rangeY,
                 z: (Math.random() - 0.5) * rangeZ,
-                r: 0.8 + Math.random() * 0.5 // Radius
+                r: 1.0 + Math.random() * 0.6 // Large radius
             });
         }
         
-        // Generate Point Cloud based on lobes
-        // We want points ON the surface and INSIDE the lobes.
-        // Generate Point Cloud based on lobes
-        // We want points ON the surface and INSIDE the lobes.
-        const points = [];
-        const numPoints = 1500; // Increased point count for denser structure
+        // 2. Generate Surface Points
+        // We scan a Fibonacci Sphere for each lobe to get even distribution
+        const pointsOuter = [];
+        const samplesPerLobe = 800; 
         
-        for(let i=0; i<numPoints; i++) {
-            // Pick a random lobe
-            let lobe = mainLobes[Math.floor(Math.random() * mainLobes.length)];
-            
-            // Random point in sphere
-            // Rejection sampling
-            let u,v,w,d;
-            do {
-                u = Math.random() * 2 - 1;
-                v = Math.random() * 2 - 1;
-                w = Math.random() * 2 - 1;
-                d = u*u + v*v + w*w;
-            } while(d > 1.0);
-            
-            // Bias points towards the surface for a more shell-like structure
-            let r = Math.sqrt(d); 
-            r = Math.pow(r, 0.4); // Stronger bias towards surface
-            
-            points.push([
-                lobe.x + u * lobe.r * r,
-                lobe.y + v * lobe.r * r,
-                lobe.z + w * lobe.r * r
-            ]);
+        const goldenRatio = (1 + Math.sqrt(5)) / 2;
+        
+        for (let lobe of mainLobes) {
+            for (let i = 0; i < samplesPerLobe; i++) {
+                // Fibonacci Spiral on Sphere
+                let theta = 2 * Math.PI * i / goldenRatio;
+                let phi = Math.acos(1 - 2 * (i + 0.5) / samplesPerLobe);
+                
+                let nx = Math.cos(theta) * Math.sin(phi);
+                let ny = Math.cos(phi); // Y is up
+                let nz = Math.sin(theta) * Math.sin(phi);
+                
+                let px = lobe.x + nx * lobe.r;
+                let py = lobe.y + ny * lobe.r;
+                let pz = lobe.z + nz * lobe.r;
+                
+                // 3. Noise Mask (The Holes)
+                // Sample noise at this surface point
+                // Scale noise input to get medium-sized holes
+                let n = fbm(px * 0.8, py * 0.8, pz * 0.8);
+                
+                // If noise is low, skip this point (create a hole in the shell)
+                // Also check if this point is inside another lobe (union operation)
+                // If it's deeply inside another lobe, we might want to cull it to avoid internal walls,
+                // but for a "cloud", internal structure is okay. 
+                // Let's just do noise culling first.
+                if (n < 0.45) continue; // High threshold = big holes
+                
+                pointsOuter.push({pos: [px, py, pz], normal: [nx, ny, nz]});
+            }
         }
         
-        // 2. Connect Neighbors to form Tets
-        // Brute force nearest neighbors
+        // 4. Create Inner Layer (The Crust)
+        // Thickness of the cloud shell
+        const thickness = 0.6; 
+        const allPoints = [];
         
-        // Distance Helper
-        function distSq(a, b) {
-            let dx = a[0]-b[0];
-            let dy = a[1]-b[1];
-            let dz = a[2]-b[2];
+        for (let i=0; i<pointsOuter.length; i++) {
+            let p = pointsOuter[i];
+            
+            // Outer point
+            // Add some jitter to break the perfect sphere surface
+            let j = (Math.random() - 0.5) * 0.1;
+            let pOut = [
+                p.pos[0] + p.normal[0] * j, 
+                p.pos[1] + p.normal[1] * j, 
+                p.pos[2] + p.normal[2] * j
+            ];
+            
+            // Inner point (move opposite to normal)
+            let pIn = [
+                p.pos[0] - p.normal[0] * thickness,
+                p.pos[1] - p.normal[1] * thickness,
+                p.pos[2] - p.normal[2] * thickness
+            ];
+            
+            // Register vertices
+            let idxOut = vertices.length;
+            vertices.push(pOut);
+            
+            let idxIn = vertices.length;
+            vertices.push(pIn);
+            
+            // Store indices for connection
+            allPoints.push({out: idxOut, in: idxIn, pos: pOut});
+        }
+        
+        console.log(`Generated ${allPoints.length} crust pairs.`);
+        
+        // 5. Connect the Crust
+        // We connect each "column" (Outer-Inner pair) to nearest neighbor columns.
+        
+        const k = 6; // Connect to 6 nearest surface neighbors
+        
+        // Distance helper
+        function distSq(idxA, idxB) {
+            let a = vertices[idxA];
+            let b = vertices[idxB];
+            let dx=a[0]-b[0], dy=a[1]-b[1], dz=a[2]-b[2];
             return dx*dx + dy*dy + dz*dz;
         }
 
-        const maxEdgeLen = 0.9; // Used for point relaxation neighborhood
-        
-        // --- Point Relaxation (for uniformity and roundedness) ---
-        const numRelaxIters = 5; // Number of relaxation iterations
-        const relaxStrength = 0.5; // How much to move points towards average neighbor position
-
-        console.log(`Relaxing ${points.length} points for ${numRelaxIters} iterations...`);
-
-        for (let iter = 0; iter < numRelaxIters; iter++) {
-            const newPoints = points.map(p => [...p]); // Clone points for simultaneous update
-
-            for (let i = 0; i < points.length; i++) {
-                let sumX = 0, sumY = 0, sumZ = 0;
-                let neighborCount = 0;
-
-                for (let j = 0; j < points.length; j++) {
-                    if (i === j) continue;
-
-                    // Only consider points within a certain radius as 'neighbors' for relaxation
-                    if (distSq(points[i], points[j]) < (maxEdgeLen * 2.0) * (maxEdgeLen * 2.0)) {
-                        sumX += points[j][0];
-                        sumY += points[j][1];
-                        sumZ += points[j][2];
-                        neighborCount++;
-                    }
-                }
-
-                if (neighborCount > 0) {
-                    let avgX = sumX / neighborCount;
-                    let avgY = sumY / neighborCount;
-                    let avgZ = sumZ / neighborCount;
-
-                    newPoints[i][0] += (avgX - points[i][0]) * relaxStrength;
-                    newPoints[i][1] += (avgY - points[i][1]) * relaxStrength;
-                    newPoints[i][2] += (avgZ - points[i][2]) * relaxStrength;
+        // Spatial acceleration would be good here, but brute force for ~2000 points is fine (4M checks).
+        for (let i = 0; i < allPoints.length; i++) {
+            let colA = allPoints[i];
+            
+            // Find neighbors based on OUTER positions
+            let neighbors = [];
+            for (let j = 0; j < allPoints.length; j++) {
+                if (i===j) continue;
+                let d2 = distSq(colA.out, allPoints[j].out);
+                // Limit connection distance to avoid spanning holes
+                if (d2 < 0.6 * 0.6) {
+                    neighbors.push({idx: j, d2: d2});
                 }
             }
-            // Update points array for next iteration
-            for(let i=0; i<points.length; i++) {
-                points[i] = newPoints[i];
+            neighbors.sort((a,b) => a.d2 - b.d2);
+            if (neighbors.length > k) neighbors.length = k;
+            
+            // Triangulate between Column A and Column B
+            // A_out, A_in, B_out, B_in
+            // We form a prism and split it into 3 tets.
+            
+            for (let n of neighbors) {
+                let colB = allPoints[n.idx];
+                
+                // To avoid duplicates (A-B and B-A), enforce index order
+                if (colA.out > colB.out) continue;
+                
+                // Form Prism: (A_out, B_out, A_in) and (B_out, B_in, A_in)?
+                // Or some other decomposition.
+                // 
+                // Tet 1: A_out, A_in, B_out, B_in 
+                // Wait, 4 points = 1 tet? Yes.
+                // But we want a "wall". 1 tet is thin.
+                // Ideally we want to fill the space between the two columns.
+                // A prism has 6 vertices. We only have 4 here (2 lines).
+                // Ah, we need a Triangle of columns to make a prism.
+                // But connecting pairwise is easier logic.
+                // Let's just form a tet between the two lines:
+                // T1: A_out, A_in, B_out, B_in 
+                indices.push([colA.out, colA.in, colB.out, colB.in]);
+                
+                // This creates a "ribbon" of tets. 
+                // It might leave gaps if not fully triangulated.
+                // Better: Connect A to B and C (triangle of neighbors).
             }
-        }
-        // Add relaxed points to vertex list
-        for(let p of points) {
-            vertices.push(p);
-        }
-        
-        let kLocal = 12; // Adjusted k for more connections
-        let maxEdgeLenLocal = 1.2; // Increased for larger, more rounded tets
-        
-        for(let i=0; i<vertices.length; i++) {
-            let myNeighbors = [];
-            for(let j=0; j<vertices.length; j++) {
-                if(i===j) continue;
-                let d2 = distSq(vertices[i], vertices[j]);
-                if (d2 < maxEdgeLenLocal*maxEdgeLenLocal) {
-                    myNeighbors.push({idx: j, d2: d2});
-                }
-            }
-            // Sort by distance
-            myNeighbors.sort((a,b) => a.d2 - b.d2);
             
-            // Keep top k
-            if (myNeighbors.length > kLocal) myNeighbors.length = kLocal;
-            
-            // Form Tets
-            // Drastically increase decimation probability to reduce tet count to 20k-50k
-            const decimationProbability = 0.95; // Skip 95% of valid combinations
-            
-            for (let a=0; a<myNeighbors.length; a++) {
-                for (let b=a+1; b<myNeighbors.length; b++) {
-                    for (let c=b+1; c<myNeighbors.length; c++) {
-                        
-                        let idxA = myNeighbors[a].idx;
-                        let idxB = myNeighbors[b].idx;
-                        let idxC = myNeighbors[c].idx;
-                        
-                        // Check if A,B,C are close to each other (clique check)
-                        let dAB = distSq(vertices[idxA], vertices[idxB]);
-                        let dBC = distSq(vertices[idxB], vertices[idxC]);
-                        let dCA = distSq(vertices[idxC], vertices[idxA]);
-                        
-                        let limit = maxEdgeLenLocal*maxEdgeLenLocal;
-                        
-                        if (dAB < limit && dBC < limit && dCA < limit) {
-                            // Valid Tet candidate
-                            if (Math.random() < decimationProbability) continue; // Skip based on probability
-                            
-                            indices.push([i, idxA, idxB, idxC]);
-                        }
-                    }
+            // Let's try the Triangle strategy for solidity
+            for (let x=0; x<neighbors.length; x++) {
+                for (let y=x+1; y<neighbors.length; y++) {
+                    let colB = allPoints[neighbors[x].idx];
+                    let colC = allPoints[neighbors[y].idx];
+                    
+                    // Check if B and C are connected (close)
+                    let dBC = distSq(colB.out, colC.out);
+                    if (dBC > 0.6 * 0.6) continue;
+                    
+                    // Enforce order to avoid overlapping tets from other iterations
+                    // (Only generate if A is the smallest index, for example)
+                    // Actually, simple way: only generate if i < n.idx
+                    // But here we have a triplet. i, n1, n2.
+                    // Enforce i < n1 < n2 ? No, that misses triangles where i is middle.
+                    // Let's just generate. Overlap is mostly fine for clouds (density adds up).
+                    // Or keep it simple: decimate heavily.
+                    
+                    if (Math.random() > 0.3) continue; // Keep 30%
+                    
+                    // We have a triangle of columns A, B, C.
+                    // We have 6 vertices: A_out, A_in, B_out, B_in, C_out, C_in.
+                    // Prism decomposition into 3 tets.
+                    
+                    // Indices
+                    let ao=colA.out, ai=colA.in;
+                    let bo=colB.out, bi=colB.in;
+                    let co=colC.out, ci=colC.in;
+                    
+                    // 1. ao, bo, co, ai (Top cap + connection to bottom)
+                    indices.push([ao, bo, co, ai]);
+                    
+                    // 2. bo, co, ai, bi (Middle skew)
+                    indices.push([bo, co, ai, bi]);
+                    
+                    // 3. co, ai, bi, ci (Bottom cap + connection)
+                    indices.push([co, ai, bi, ci]);
                 }
             }
         }
         
-        console.log(`Generated Skeleton with ${indices.length} tets.`);
+        console.log(`Generated Shell with ${indices.length} tets.`);
     }
 
 if (CONFIG.mode === 'soup') {
@@ -715,8 +746,10 @@ if (CONFIG.mode === 'soup') {
     generateCluster();
 } else if (CONFIG.mode === 'skeleton') {
     generateSkeleton();
+} else if (CONFIG.mode === 'shell') {
+    generateShell();
 } else {
-    // Default or Fallback
+    // Default
 }
 
 console.log(`Vertices: ${vertices.length}`);
