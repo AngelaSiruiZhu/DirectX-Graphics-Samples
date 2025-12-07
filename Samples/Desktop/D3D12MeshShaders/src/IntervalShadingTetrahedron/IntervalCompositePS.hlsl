@@ -138,7 +138,6 @@ float3 GetProceduralBackground(float3 rayDir)
     const float step             = 0.1;
     const float maxDistance      = 500.0;
 
-    // Render when looking "down" (which maps to rayDir.y > 0 in this setup)
     if (rayDir.y > 0.01)
     {
         float maxHeight = groundBaseHeight;
@@ -152,10 +151,8 @@ float3 GetProceduralBackground(float3 rayDir)
             for (int i = 0; i < 800 && t < maxDistance; ++i)
             {
                 float3 p = Globals.CameraPos + rayDir * t;
-                // Inverted terrain: Mountains stick DOWN from the base
                 float h = GetTerrainHeight(p, groundBaseHeight, terrainAmp);
 
-                // hit terrain (p.y goes UP into the terrain)
                 if (p.y > h)
                 {
                     // Binary refine intersection
@@ -251,7 +248,7 @@ float4 main(PSIn input) : SV_Target
         float cloudTransmittance = 1.0;
         float3 accumulatedLight = 0;
 
-        float3 lightPos = float3(0,0,0);
+        float3 lightPos = float3(0.0, -15.0, 0.0);
         float3 lightColor = float3(1.0, 0.9, 0.7) * 0.05;
 
         float2 ndc = uv * 2.0 - 1.0;
@@ -281,23 +278,27 @@ float4 main(PSIn input) : SV_Target
 
                 if (density > 0.0001)
                 {
-                    float distToLight = length(p);
+                    float3 lDir = normalize(lightPos - p);
+                    float distToLight = length(lightPos - p);
 
+                    // Shadow march
                     float shadowDensity = 0;
-                    shadowDensity += GetDensity(p * 0.75 * Globals.Density);
-                    shadowDensity += GetDensity(p * 0.50 * Globals.Density);
-                    shadowDensity += GetDensity(p * 0.25 * Globals.Density);
+                    shadowDensity += GetDensity((p + lDir * 2.0) * Globals.Density);
+                    shadowDensity += GetDensity((p + lDir * 4.0) * Globals.Density);
+                    shadowDensity += GetDensity((p + lDir * 8.0) * Globals.Density);
 
-                    float directT   = exp(-shadowDensity * 1.5);
+                    float directT   = exp(-shadowDensity * 1.0);
                     float scatterT  = exp(-shadowDensity * 0.5);
-                    float attenuation = 1.0 / (0.1 + distToLight * distToLight * 0.05);
+                    
+                    // Distance attenuation
+                    float attenuation = 1.0 / (1.0 + distToLight * distToLight * 0.005);
 
                     float3 sunColor = float3(1.0,0.95,0.9) * 0.5;
-                    float3 ambient  = float3(0.6,0.6,0.6);
+                    float3 ambient  = float3(0.6,0.6,0.7) * 0.8;
 
                     float3 incoming =
-                        lightColor * (directT + scatterT * 0.5) * attenuation
-                        + sunColor + ambient;
+                        lightColor * 150 * (directT + scatterT * 0.001) * attenuation
+                        + ambient;
 
                     float stepTransmittance = exp(-density * stepSize);
                     float3 scattered = incoming * density * stepSize;
@@ -312,6 +313,12 @@ float4 main(PSIn input) : SV_Target
 
         // terrain background
         float3 skyColor = GetProceduralBackground(rayDir);
+
+        // Visualize light source (Sun)
+        float3 lVec = normalize(lightPos - Globals.CameraPos);
+        float sun = pow(max(0, dot(rayDir, lVec)), 10000.0);
+        skyColor += float3(1.0, 0.8, 0.6) * sun * 100.0;
+
         float3 finalCloud = accumulatedLight + skyColor * cloudTransmittance;
 
         // God rays
@@ -321,10 +328,10 @@ float4 main(PSIn input) : SV_Target
         lightScreen.y = 1.0 - lightScreen.y;
 
         float2 delta = (uv - lightScreen);
-        int samples = 32;
-        float density = 0.9;
-        float weight  = 0.008;
-        float decay   = 0.97;
+        int samples = 64;
+        float density = 0.95;
+        float weight  = 0.15; // Tripled the weight
+        float decay   = 0.995; // Slower decay for longer rays
 
         delta *= (density / samples);
 
@@ -357,8 +364,8 @@ float4 main(PSIn input) : SV_Target
                 float block = smoothstep(0.2, 0.6, maxD);
                 sampleT = 1.0 - block;
 
-                float distToLight = length(p2);
-                float atten = 1.0 / (0.1 + distToLight * distToLight * 0.2);
+                float distToLight = length(p2 - lightPos);
+                float atten = 1.0 / (1.0 + distToLight * distToLight * 0.01);
                 sampleT *= atten;
             }
 
@@ -368,7 +375,7 @@ float4 main(PSIn input) : SV_Target
 
         color = finalCloud + godRayColor * float3(0.5, 0.4, 0.3);
         break;
-    }
+        }
     }
 
     return float4(color, alpha);
