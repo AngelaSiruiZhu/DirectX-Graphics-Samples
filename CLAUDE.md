@@ -12,21 +12,23 @@ Based on the paper: *Interval Shading: using Mesh Shaders to generate shading in
 
 ## Build Commands
 
-### Quick Build
-```powershell
-# Use the project-specific build script
-.\Samples\Desktop\D3D12MeshShaders\src\IntervalShadingTetrahedron\build_simple.ps1
+### Quick Build (ALWAYS USE THIS)
+```bash
+# Use the build script - ensures shaders are recompiled
+./Samples/Desktop/D3D12MeshShaders/src/IntervalShadingTetrahedron/build.bat
 
 # Executable location: Samples/Desktop/D3D12MeshShaders/src/IntervalShadingTetrahedron/bin/runnable.exe
 ```
 
-### Manual Build
-```powershell
-# Using MSBuild directly
-msbuild "Samples/Desktop/D3D12MeshShaders/src/D3D12MeshShaders.sln" /p:Configuration=Debug /p:Platform=x64 /t:IntervalShadingTetrahedron
+**IMPORTANT:** Always use `build.bat` instead of calling MSBuild directly. MSBuild doesn't always detect shader changes, so the build script touches all `.hlsl` files before building to force recompilation.
 
-# Or open in Visual Studio and build
-# Set IntervalShadingTetrahedron as the StartUp Project
+### Manual Build (NOT RECOMMENDED)
+```powershell
+# If you must use MSBuild directly, touch shaders first:
+touch Samples/Desktop/D3D12MeshShaders/src/IntervalShadingTetrahedron/*.hlsl
+
+# Then build
+msbuild "Samples/Desktop/D3D12MeshShaders/src/D3D12MeshShaders.sln" /p:Configuration=Debug /p:Platform=x64 /t:IntervalShadingTetrahedron
 ```
 
 ### Build Configurations
@@ -285,9 +287,11 @@ All `.hlsl` files are set up with FxCompile build customization:
 ### Auto-Rebuild
 **IMPORTANT:** Whenever C++ files (`.cpp`, `.h`) or shader files (`.hlsl`) are modified, proactively rebuild the project without waiting for the user to ask:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File "Samples/Desktop/D3D12MeshShaders/src/IntervalShadingTetrahedron/build_simple.ps1"
+```bash
+./Samples/Desktop/D3D12MeshShaders/src/IntervalShadingTetrahedron/build.bat
 ```
+
+**CRITICAL:** Always use `build.bat` - it touches shader files before building to force recompilation. MSBuild alone often fails to detect shader changes.
 
 Rebuild is needed after:
 - Pulling latest changes that touch C++/HLSL files
