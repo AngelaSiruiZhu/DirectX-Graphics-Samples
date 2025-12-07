@@ -317,6 +317,47 @@ void IntervalShadingTetrahedron::LoadAssets()
 
 void IntervalShadingTetrahedron::OnUpdate()
 {
+    // Get elapsed time for drift animation
+    static auto startTime = std::chrono::high_resolution_clock::now();
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float elapsedTime = std::chrono::duration<float>(currentTime - startTime).count();
+    
+    // Apply smooth drifting to clouds along world axes (back and forth)
+    for (size_t i = 0; i < m_sceneObjects.size(); i++)
+    {
+        auto& obj = m_sceneObjects[i];
+        
+        // Vary speed and amplitude for each cloud based on index
+        float speedVariation = 0.4f + (i % 3) * 0.075f;  // Speeds: 0.4, 0.475, 0.55
+        float ampVariation = 0.0008f + (i % 3) * 0.0003f;  // Amplitudes: 0.0008, 0.0011, 0.0014
+        
+        // Apply oscillating drift along Y-axis (back and forth motion)
+        float driftY = sinf(elapsedTime * speedVariation) * ampVariation;
+        
+        // Apply oscillating drift along X-axis (different phase)
+        float driftX = sinf(elapsedTime * speedVariation + 1.57f) * ampVariation;  // 90 degree phase shift
+        
+        // Apply oscillating drift along Z-axis (different phase)
+        float driftZ = sinf(elapsedTime * speedVariation + 3.14f) * ampVariation;  // 180 degree phase shift
+        
+        // Get the original world matrix and update translation
+        XMMATRIX world = XMLoadFloat4x4(&obj.WorldMatrix);
+        world = XMMatrixTranspose(world);  // Transpose back to world space
+        
+        XMVECTOR translation = world.r[3];
+        XMFLOAT3 pos;
+        XMStoreFloat3(&pos, translation);
+        
+        // Apply drift to all axes
+        pos.x += driftX;
+        pos.y += driftY;
+        pos.z += driftZ;
+        
+        // Rebuild matrix with drifted position
+        world.r[3] = XMVectorSet(pos.x, pos.y, pos.z, 1.0f);
+        XMStoreFloat4x4(&obj.WorldMatrix, XMMatrixTranspose(world));
+    }
+    
     UpdateConstants();
 }
 
