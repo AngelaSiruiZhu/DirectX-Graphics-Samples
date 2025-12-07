@@ -119,92 +119,101 @@ float3 GetWorldPos(float2 uv, float depth)
     return Globals.CameraPos + rayDir * depth;
 }
 
+float GetTerrainHeight(float3 p, float base, float amp)
+{
+    float n = fbm2D(p.xz * 0.08);
+    n = n * n; 
+    return base - n * amp;
+}
+
 float3 GetProceduralBackground(float3 rayDir)
 {
     float3 skyTop  = float3(0.2, 0.4, 0.8);
     float3 horizon = float3(0.6, 0.7, 0.8);
 
-    // sky gradient
-    float3 col = lerp(horizon, skyTop, pow(max(0, rayDir.y), 0.8));
+    float3 col = lerp(horizon, skyTop, pow(max(0, -rayDir.y), 0.8));
 
-    const float groundBaseHeight = -10.0;
-    const float terrainAmp       = 12.0;
+    const float groundBaseHeight = 5.0;
+    const float terrainAmp       = 15.0;
     const float step             = 0.1;
     const float maxDistance      = 500.0;
 
-    // only downward rays should try to hit terrain
-    if (rayDir.y < -1e-4)
+    // Render when looking "down" (which maps to rayDir.y > 0 in this setup)
+    if (rayDir.y > 0.01)
     {
-        float maxHeight = groundBaseHeight + terrainAmp;
+        float maxHeight = groundBaseHeight;
+        float minHeight = groundBaseHeight - terrainAmp;
 
-        // Estimate initial intersection with a plane above terrain
-        float t = (maxHeight - Globals.CameraPos.y) / rayDir.y;
-
-        // in front of camera
-        t = max(t, 0.0);
-
-        for (int i = 0; i < 800 && t < maxDistance; ++i)
+        if (Globals.CameraPos.y < maxHeight)
         {
-            float3 p = Globals.CameraPos + rayDir * t;
-            float h = groundBaseHeight + fbm2D(p.xz * 0.1) * terrainAmp;
+            float t = (minHeight - Globals.CameraPos.y) / rayDir.y;
+            t = max(t, 0.0);
 
-            // hit terrain
-            if (p.y < h)
+            for (int i = 0; i < 800 && t < maxDistance; ++i)
             {
-                // Binary refine intersection
-                float t_min = max(t - step, 0.0);
-                float t_max = t;
+                float3 p = Globals.CameraPos + rayDir * t;
+                // Inverted terrain: Mountains stick DOWN from the base
+                float h = GetTerrainHeight(p, groundBaseHeight, terrainAmp);
 
-                for (int j = 0; j < 5; j++)
+                // hit terrain (p.y goes UP into the terrain)
+                if (p.y > h)
                 {
-                    float t_mid = 0.5 * (t_min + t_max);
-                    float3 p_mid = Globals.CameraPos + rayDir * t_mid;
-                    float h_mid = groundBaseHeight + fbm2D(p_mid.xz * 0.1) * terrainAmp;
+                    // Binary refine intersection
+                    float t_min = max(t - step, 0.0);
+                    float t_max = t;
 
-                    if (p_mid.y < h_mid)
-                        t_max = t_mid;
-                    else
-                        t_min = t_mid;
+                    for (int j = 0; j < 5; j++)
+                    {
+                        float t_mid = 0.5 * (t_min + t_max);
+                        float3 p_mid = Globals.CameraPos + rayDir * t_mid;
+                        float h_mid = GetTerrainHeight(p_mid, groundBaseHeight, terrainAmp);
+
+                        if (p_mid.y > h_mid)
+                            t_max = t_mid;
+                        else
+                            t_min = t_mid;
+                    }
+
+                    t = t_max;
+                    p = Globals.CameraPos + rayDir * t;
+                    h = GetTerrainHeight(p, groundBaseHeight, terrainAmp);
+
+                    // normal
+                    float d = 0.1;
+                    float h_x = GetTerrainHeight(p + float3(d, 0, 0), groundBaseHeight, terrainAmp);
+                    float h_z = GetTerrainHeight(p + float3(0, 0, d), groundBaseHeight, terrainAmp);
+
+                    float3 normal = -normalize(float3(h - h_x, d, h - h_z));
+
+                    float3 lightDir = normalize(float3(0.5, -1.0, -0.5));
+                    float light = saturate(dot(normal, lightDir)) * 0.6 + 0.4;
+
+                    float3 grass = float3(0.1, 0.35, 0.1);
+                    float3 dirt  = float3(0.4, 0.3, 0.2);
+                    float3 rock  = float3(0.25, 0.25, 0.3);
+                    float3 snow  = float3(1.0, 1.0, 1.0);
+
+                    float n = fbm2D(p.xz * 0.5);
+                    float3 lowLayer = lerp(grass, dirt, smoothstep(0.45, 0.75, n));
+
+                    float relativeHeight = groundBaseHeight - p.y;
+                    
+                    float rockMix = smoothstep(5.0, 8.0, relativeHeight + n * 2.0);
+                    float3 midLayer = lerp(lowLayer, rock, rockMix);
+
+                    float snowMix = smoothstep(5.0, 8.0, relativeHeight + n * 2.0);
+                    snowMix *= smoothstep(0.5, 0.9, -normal.y);
+
+                    float3 ground = lerp(midLayer, snow, snowMix);
+                    ground *= light;
+
+                    float fog = 1.0 - exp(-t * 0.005);
+                    col = lerp(ground, horizon, fog);
+                    break;
                 }
 
-                t = t_max;
-                p = Globals.CameraPos + rayDir * t;
-                h = groundBaseHeight + fbm2D(p.xz * 0.1) * terrainAmp;
-
-                // normal
-                float d = 0.1;
-                float h_x = groundBaseHeight + fbm2D((p.xz + float2(d, 0)) * 0.1) * terrainAmp;
-                float h_z = groundBaseHeight + fbm2D((p.xz + float2(0, d)) * 0.1) * terrainAmp;
-
-                float3 normal = normalize(float3(h - h_x, d, h - h_z));
-
-                float3 lightDir = normalize(float3(0.5, 1.0, -0.5));
-                float light = saturate(dot(normal, lightDir)) * 0.6 + 0.4;
-
-                float3 grass = float3(0.1, 0.35, 0.1);
-                float3 dirt  = float3(0.4, 0.3, 0.2);
-                float3 rock  = float3(0.25, 0.25, 0.3);
-                float3 snow  = float3(1.0, 1.0, 1.0);
-
-                float n = fbm2D(p.xz * 0.5);
-                float3 lowLayer = lerp(grass, dirt, smoothstep(0.45, 0.75, n));
-
-                float rockMix = smoothstep(-5.0, -1.0, p.y + n * 2.0);
-                float3 midLayer = lerp(lowLayer, rock, rockMix);
-
-                float snowMix = smoothstep(-3.0, 1.0, p.y + n);
-                snowMix *= smoothstep(0.6, 0.9, normal.y);
-
-                float3 ground = lerp(midLayer, snow, snowMix);
-                ground *= light;
-
-                // Distance fog
-                float fog = 1.0 - exp(-t * 0.015);
-                col = lerp(ground, horizon, fog);
-                break;
+                t += step;
             }
-
-            t += step;
         }
     }
 

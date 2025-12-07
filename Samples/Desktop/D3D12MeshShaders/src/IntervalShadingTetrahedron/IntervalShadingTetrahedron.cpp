@@ -1090,8 +1090,8 @@ void IntervalShadingTetrahedron::UpdateConstants()
     float x = r * cosf(m_cameraAngle);
     float z = r * sinf(m_cameraAngle);
 
-    XMVECTOR cameraPos = XMVectorSet(x, y, z, 1.0f);
-    XMVECTOR target = XMVectorSet(0.0f, -2.0f, 0.0f, 1.0f);  // Moved down along Y axis
+    XMVECTOR cameraPos = XMVectorSet(x, y - 5.0f, z, 1.0f);
+    XMVECTOR target = XMVectorSet(0.0f, -2.0f, 0.0f, 1.0f);
     XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
     if (cosf(m_cameraElevation) < 0.0f)
