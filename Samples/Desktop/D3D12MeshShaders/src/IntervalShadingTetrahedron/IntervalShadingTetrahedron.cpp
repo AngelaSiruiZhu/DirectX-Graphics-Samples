@@ -72,6 +72,8 @@ IntervalShadingTetrahedron::IntervalShadingTetrahedron(UINT width, UINT height, 
     ZeroMemory(&m_constantBufferData, sizeof(m_constantBufferData));
     m_constantBufferData.DebugMode = 5; // Default to Volumetric Cloud
     m_constantBufferData.LightDir = XMFLOAT3(0.5f, -0.8f, 0.2f); // Default sun-like direction
+    m_constantBufferData.WaveSpeedScale = 1.0f;
+    m_constantBufferData.WaveAmplitudeScale = 1.0f;
 }
 
 void IntervalShadingTetrahedron::OnInit()
@@ -261,6 +263,9 @@ void IntervalShadingTetrahedron::LoadAssets()
         so.WorldMatrix = m_modelMatrix; // Use the one calculated in LoadTet
         so.IndexCount = static_cast<UINT>(m_tetIndices.size());
         so.MeshIndex = 0;
+        so.Position = XMFLOAT3(0.0f, 0.0f, 0.0f);
+        so.WaveSpeedScale = 1.0f;
+        so.WaveAmplitudeScale = 1.0f;
         m_sceneObjects.push_back(so);
     }
 
@@ -686,6 +691,9 @@ void IntervalShadingTetrahedron::LoadScene(const std::wstring& scenePath)
     m_vertices.clear();
     m_tetIndices.clear();
     m_sceneObjects.clear();
+    const XMFLOAT3 lightAnchor(0.0f, -15.0f, 0.0f);
+    size_t closestObjectIndex = SIZE_MAX;
+    float closestDistanceSq = std::numeric_limits<float>::max();
     
     if (j.contains("objects"))
     {
@@ -750,10 +758,29 @@ void IntervalShadingTetrahedron::LoadScene(const std::wstring& scenePath)
             XMStoreFloat4x4(&so.WorldMatrix, XMMatrixTranspose(m));
             so.IndexCount = static_cast<UINT>(md.Indices.size());
             so.MeshIndex = indexOffset; // Start index in global buffer
+            so.Position = XMFLOAT3(pos[0], adjustedY, pos[2]);
+            so.WaveSpeedScale = 1.0f;
+            so.WaveAmplitudeScale = 1.0f;
             
             m_sceneObjects.push_back(so);
+            size_t newIndex = m_sceneObjects.size() - 1;
+            float dx = so.Position.x - lightAnchor.x;
+            float dy = so.Position.y - lightAnchor.y;
+            float dz = so.Position.z - lightAnchor.z;
+            float distSq = dx * dx + dy * dy + dz * dz;
+            if (distSq < closestDistanceSq)
+            {
+                closestDistanceSq = distSq;
+                closestObjectIndex = newIndex;
+            }
             LogDebug("Added SceneObject. Total objects: " + std::to_string(m_sceneObjects.size()));
         }
+    }
+
+    if (closestObjectIndex != SIZE_MAX && closestObjectIndex < m_sceneObjects.size())
+    {
+        m_sceneObjects[closestObjectIndex].WaveSpeedScale = 0.25f;
+        m_sceneObjects[closestObjectIndex].WaveAmplitudeScale = 0.5f;
     }
     
     // Update Camera if present
@@ -1152,7 +1179,9 @@ void IntervalShadingTetrahedron::UpdateConstants()
         
         m_constantBufferData.Model = obj.WorldMatrix;
         m_constantBufferData.TetCount = obj.IndexCount / 4;
+        m_constantBufferData.WaveSpeedScale = obj.WaveSpeedScale;
         m_constantBufferData.TetOffset = static_cast<uint32_t>(obj.MeshIndex); // Index buffer offset
+        m_constantBufferData.WaveAmplitudeScale = obj.WaveAmplitudeScale;
         
         UINT64 offset = (m_frameIndex * 64 + objIndex) * m_cbStride;
         std::memcpy(m_cbvDataBegin + offset, &m_constantBufferData, sizeof(m_constantBufferData));
@@ -1261,6 +1290,8 @@ void IntervalShadingTetrahedron::OpenMeshFile()
             so.WorldMatrix = m_modelMatrix;
             so.IndexCount = static_cast<UINT>(m_tetIndices.size());
             so.MeshIndex = 0;
+            so.Position = XMFLOAT3(0.0f, 0.0f, 0.0f);
+            so.WaveSpeedScale = 1.0f;
             m_sceneObjects.push_back(so);
 
             // Re-upload buffers to GPU (required after loading new mesh!)

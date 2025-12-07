@@ -26,6 +26,9 @@ struct SceneObject
     // or we store the resource pointer here.
     // Better: Store an index into a m_meshes vector.
     size_t MeshIndex; 
+    XMFLOAT3 Position;
+    float WaveSpeedScale;
+    float WaveAmplitudeScale;
 };
 
 struct MeshData
@@ -66,7 +69,10 @@ private:
         XMFLOAT3 CameraPos;
         float Time;
         XMFLOAT3 LightDir;
+        float WaveSpeedScale;
         uint32_t TetOffset; // Offset into global index buffer
+        float WaveAmplitudeScale;
+        XMFLOAT2 Padding;
     };
 
     // Pipeline objects
