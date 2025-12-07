@@ -60,10 +60,10 @@ IntervalShadingTetrahedron::IntervalShadingTetrahedron(UINT width, UINT height, 
     m_rtvDescriptorSize(0),
     m_cbvDataBegin(nullptr),
     m_cameraPosX(0.0f),
-    m_cameraPosY(50.0f),           // Start at cloud level
-    m_cameraPosZ(-50.0f),          // Start back from clouds
+    m_cameraPosY(-20.0f),          // Below terrain (groundBaseHeight=5) to see it
+    m_cameraPosZ(-35.0f),          // Back from clouds
     m_cameraYaw(0.0f),             // Looking forward (+Z)
-    m_cameraPitch(0.0f),           // Level view
+    m_cameraPitch(0.3f),           // Slightly up to see clouds
     m_viewForward(0.0f, 0.0f, 1.0f),
     m_viewRight(1.0f, 0.0f, 0.0f),
     m_randomizeDrawOrder(false)
@@ -217,12 +217,11 @@ void IntervalShadingTetrahedron::LoadPipeline()
 
 void IntervalShadingTetrahedron::LoadAssets()
 {
-    // Try to load scene.json - try multiple relative paths
-    std::wstring scenePath = L"..\\Assets\\IntervalShading\\scene.json";  // from bin/ folder
+    // Try to load scene.json first
+    std::wstring scenePath = L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\scene.json";
+    // Also try relative paths
     if (!std::filesystem::exists(scenePath)) scenePath = L"..\\..\\Assets\\IntervalShading\\scene.json";
-    if (!std::filesystem::exists(scenePath)) scenePath = L"..\\..\\..\\Assets\\IntervalShading\\scene.json";
     if (!std::filesystem::exists(scenePath)) scenePath = L"..\\..\\..\\..\\Assets\\IntervalShading\\scene.json";
-    if (!std::filesystem::exists(scenePath)) scenePath = L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\scene.json";
     
     bool sceneLoaded = false;
     if (std::filesystem::exists(scenePath))
@@ -513,8 +512,8 @@ void IntervalShadingTetrahedron::OnDestroy()
 
 void IntervalShadingTetrahedron::OnKeyDown(UINT8 key)
 {
-    const float moveSpeed = 3.0f;
-    const float rotSpeed = 0.1f;
+    const float moveSpeed = 2.0f;
+    const float rotSpeed = 0.05f;
 
     switch (key)
     {
@@ -550,14 +549,14 @@ void IntervalShadingTetrahedron::OnKeyDown(UINT8 key)
         m_cameraPosZ += m_viewRight.z * moveSpeed;
         break;
 
-    // Arrow keys: Look around
-    case VK_LEFT:  m_cameraYaw += rotSpeed; break;
-    case VK_RIGHT: m_cameraYaw -= rotSpeed; break;
-    case VK_UP:    m_cameraPitch += rotSpeed; break;
-    case VK_DOWN:  m_cameraPitch -= rotSpeed; break;
+    // Arrow keys: Look around (signs flipped)
+    case VK_LEFT:  m_cameraYaw -= rotSpeed; break;
+    case VK_RIGHT: m_cameraYaw += rotSpeed; break;
+    case VK_UP:    m_cameraPitch -= rotSpeed; break;
+    case VK_DOWN:  m_cameraPitch += rotSpeed; break;
     }
 
-    // Clamp pitch
+    // Clamp pitch to avoid gimbal lock
     m_cameraPitch = (std::max)(-1.5f, (std::min)(1.5f, m_cameraPitch));
 
     // Wrap yaw
@@ -1114,7 +1113,7 @@ void IntervalShadingTetrahedron::UpdateConstants()
 
     XMVECTOR forward = XMVectorSet(forwardX, forwardY, forwardZ, 0.0f);
     XMVECTOR target = XMVectorAdd(cameraPos, forward);
-    XMVECTOR up = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);  // Flipped to match scene orientation
+    XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
     XMMATRIX model = XMMatrixIdentity();
     XMMATRIX view = XMMatrixLookAtLH(cameraPos, target, up);
@@ -1255,7 +1254,7 @@ void IntervalShadingTetrahedron::OpenMeshFile()
             // Reset Scene to single object
             m_vertices = md.Vertices;
             m_tetIndices = md.Indices;
-
+            
             m_sceneObjects.clear();
             SceneObject so;
             so.MeshName = "UserSelected";
@@ -1264,7 +1263,7 @@ void IntervalShadingTetrahedron::OpenMeshFile()
             so.MeshIndex = 0;
             m_sceneObjects.push_back(so);
 
-            // Re-upload buffers to GPU (this was missing!)
+            // Re-upload buffers to GPU (required after loading new mesh!)
             UploadBuffer(&m_vertexBuffer, m_vertices.data(), m_vertices.size() * sizeof(XMFLOAT4));
             UploadBuffer(&m_tetBuffer, m_tetIndices.data(), m_tetIndices.size() * sizeof(uint32_t));
 
