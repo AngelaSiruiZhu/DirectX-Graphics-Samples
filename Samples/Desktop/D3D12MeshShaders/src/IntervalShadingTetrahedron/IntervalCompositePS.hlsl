@@ -297,7 +297,7 @@ float4 main(PSIn input) : SV_Target
                     float3 ambient  = float3(0.6,0.6,0.7) * 0.8;
 
                     float3 incoming =
-                        lightColor * 150 * (directT + scatterT * 0.001) * attenuation
+                        lightColor * 100 * (directT + scatterT * 0.001) * attenuation
                         + ambient;
 
                     float stepTransmittance = exp(-density * stepSize);
@@ -329,13 +329,20 @@ float4 main(PSIn input) : SV_Target
 
         float2 delta = (uv - lightScreen);
         int samples = 64;
-        float density = 0.95;
-        float weight  = 0.15; // Tripled the weight
-        float decay   = 0.995; // Slower decay for longer rays
+        float density = 0.5;
+        float weight  = 0.12; 
+        float decay   = 0.96; 
+
+        // Pre-calculate air attenuation
+        float airDist = length(Globals.CameraPos - lightPos);
+        float airAtten = 1.0 / (1.0 + airDist * airDist * 0.01);
 
         delta *= (density / samples);
 
-        float2 coord = uv;
+        // jitter to reduce banding
+        float jitter = hash(float3(uv * 1024.0, 0.0));
+        float2 coord = uv - delta * jitter;
+
         float illuminationDecay = 1.0;
         float3 godRayColor = 0;
 
@@ -367,6 +374,10 @@ float4 main(PSIn input) : SV_Target
                 float distToLight = length(p2 - lightPos);
                 float atten = 1.0 / (1.0 + distToLight * distToLight * 0.01);
                 sampleT *= atten;
+            }
+            else
+            {
+                sampleT = airAtten;
             }
 
             godRayColor += sampleT * illuminationDecay * weight;
