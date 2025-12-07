@@ -1,69 +1,118 @@
 {
     "camera": {
-        "position": [0.0, -20.0, 0.0],
-        "target": [0.0, 10.0, 5.0]
+        "position": [0.0, -50.0, 0.0],
+        "target": [0.0, 20.0, 10.0]
     },
     "light": {
         "direction": [0.5, -0.8, 0.2],
-        "color": [1.0, 0.9, 0.8],
+        "color": [1.0, 0.95, 0.9],
         "intensity": 2.0
     },
     "objects": [
         {
-            "name": "Hero Cloud 1",
-            "mesh": "test_structure_storm_v2.vtk",
-            "position": [0.0, 0.0, 0.0],
-            "rotation": [0.0, 0.0, 0.0],
-            "scale": [3.0, 1.5, 2.5]
+            "name": "Cloud 1 - Large Front",
+            "mesh": "cloud_1.vtk",
+            "position": [-15.0, 160.0, 30.0],
+            "rotation": [0.0, 45.0, 0.0],
+            "scale": [15.0, 9.0, 12.0]
         },
         {
-            "name": "Structure Cloud 1",
-            "mesh": "test_structure_storm_v2.vtk",
-            "position": [-8.0, 2.0, 5.0],
-            "rotation": [0.5, 1.0, 0.0],
-            "scale": [2.0, 1.2, 2.0]
+            "name": "Cloud 2 - Medium Right",
+            "mesh": "cloud_2.vtk",
+            "position": [25.0, 155.0, 25.0],
+            "rotation": [0.0, -30.0, 5.0],
+            "scale": [10.5, 6.0, 9.0]
         },
         {
-            "name": "Shell Cloud 2",
-            "mesh": "test_structure_storm_v2.vtk",
-            "position": [7.0, -1.0, 4.0],
-            "rotation": [0.0, 2.0, 0.5],
-            "scale": [2.5, 1.3, 2.2]
+            "name": "Cloud 3 - Small Left",
+            "mesh": "cloud_3.vtk",
+            "position": [-35.0, 152.0, 20.0],
+            "rotation": [0.0, 15.0, 0.0],
+            "scale": [7.5, 4.5, 6.0]
         },
         {
-            "name": "Structure Cloud 2",
-            "mesh": "test_structure_storm_v2.vtk",
-            "position": [2.0, 1.0, -8.0],
-            "rotation": [1.0, 0.0, 0.0],
-            "scale": [1.8, 1.0, 1.8]
+            "name": "Cloud 4 - Big Center Back",
+            "mesh": "cloud_4.vtk",
+            "position": [5.0, 165.0, 60.0],
+            "rotation": [0.0, 90.0, 0.0],
+            "scale": [18.0, 10.5, 15.0]
         },
         {
-            "name": "Small Puff 1",
-            "mesh": "test_structure_storm_v2.vtk",
-            "position": [-5.0, -2.0, -5.0],
-            "rotation": [2.0, 1.0, 1.0],
-            "scale": [1.0, 0.8, 1.0]
+            "name": "Cloud 5 - Medium Far Right",
+            "mesh": "cloud_5.vtk",
+            "position": [45.0, 158.0, 45.0],
+            "rotation": [0.0, -60.0, 0.0],
+            "scale": [12.0, 7.5, 10.5]
         },
         {
-            "name": "Small Puff 2",
-            "mesh": "test_structure_storm_v2.vtk",
-            "position": [5.0, 3.0, -2.0],
-            "rotation": [0.0, 3.0, 0.0],
-            "scale": [1.2, 0.9, 1.2]
+            "name": "Cloud 6 - Small High",
+            "mesh": "cloud_6.vtk",
+            "position": [0.0, 170.0, 40.0],
+            "rotation": [5.0, 0.0, 0.0],
+            "scale": [6.0, 3.6, 5.4]
         },
         {
-            "name": "Distant Cloud",
-            "mesh": "test_structure_storm_v2.vtk",
-            "position": [0.0, 5.0, 15.0],
-            "rotation": [0.0, 0.5, 0.0],
-            "scale": [4.0, 1.5, 3.0]
+            "name": "Cloud 7 - Tiny Left Far",
+            "mesh": "cloud_1.vtk",
+            "position": [-50.0, 162.0, 55.0],
+            "rotation": [0.0, 120.0, 0.0],
+            "scale": [5.4, 3.0, 4.5]
         },
         {
-            "name": "Sun Visualization",
-            "mesh": "test_structure_storm_v2.vtk",
-            "position": [-25.0, 30.0, -10.0],
-            "rotation": [0.0, 0.0, 0.0],
-            "scale": [0.5, 0.5, 0.5]
+            "name": "Cloud 8 - Medium Center",
+            "mesh": "cloud_2.vtk",
+            "position": [10.0, 156.0, 35.0],
+            "rotation": [0.0, 180.0, 0.0],
+            "scale": [9.0, 5.4, 7.5]
+        },
+        {
+            "name": "Cloud 9 - Large Right Back",
+            "mesh": "cloud_3.vtk",
+            "position": [35.0, 167.0, 70.0],
+            "rotation": [0.0, -90.0, 3.0],
+            "scale": [16.5, 9.0, 13.5]
+        },
+        {
+            "name": "Cloud 10 - Small Front Right",
+            "mesh": "cloud_4.vtk",
+            "position": [20.0, 150.0, 15.0],
+            "rotation": [0.0, 30.0, 0.0],
+            "scale": [6.6, 3.9, 6.0]
+        },
+        {
+            "name": "Cloud 11 - Tiny High Center",
+            "mesh": "cloud_5.vtk",
+            "position": [-5.0, 175.0, 50.0],
+            "rotation": [0.0, 150.0, 0.0],
+            "scale": [4.5, 2.7, 3.9]
+        },
+        {
+            "name": "Cloud 12 - Medium Far Left",
+            "mesh": "cloud_6.vtk",
+            "position": [-45.0, 158.0, 40.0],
+            "rotation": [0.0, -45.0, 0.0],
+            "scale": [9.6, 6.0, 8.4]
+        },
+        {
+            "name": "Cloud 13 - Large Back Center",
+            "mesh": "cloud_1.vtk",
+            "position": [-10.0, 163.0, 80.0],
+            "rotation": [0.0, 60.0, 0.0],
+            "scale": [13.5, 8.4, 12.0]
+        },
+        {
+            "name": "Cloud 14 - Small Right Near",
+            "mesh": "cloud_2.vtk",
+            "position": [30.0, 151.0, 18.0],
+            "rotation": [0.0, -120.0, 0.0],
+            "scale": [6.0, 3.6, 5.4]
+        },
+        {
+            "name": "Cloud 15 - Medium Left Near",
+            "mesh": "cloud_3.vtk",
+            "position": [-25.0, 154.0, 22.0],
+            "rotation": [0.0, 75.0, 0.0],
+            "scale": [8.4, 4.8, 6.9]
         }
     ]
 }
