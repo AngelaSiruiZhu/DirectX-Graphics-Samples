@@ -259,6 +259,81 @@ bool LineIntersection(float2 L1A, float2 L1B, float2 L2A, float2 L2B, out float2
     return false;
 }
 
+// Deformation function - morphs mesh between different shapes
+float4 DeformVertex(float4 worldPos, float time)
+{
+    float4 deformed = worldPos;
+    
+    // Animation parameters
+    float speed = 0.1f;  // slower
+    
+    float3 pos = worldPos.xyz;
+    float dist = length(pos);
+    float3 normal = normalize(pos);
+    
+    // Only apply Julia set to TOP region of mesh (positive Y)
+    float regionMask = smoothstep(-1.0f, 0.5f, pos.y); // only top half
+    
+    // Only proceed if we're in the selected region
+    if (regionMask > 0.01f)
+    {
+        float growthTime = time * speed;
+        
+        // Create fractal pattern using Mandelbrot-like iteration
+        float3 z = pos * 2.0f;
+        float julia = 0.0f;
+        float juliaStrength = 0.0f;
+        
+        // Iterate to create fractal structure
+        for (int i = 0; i < 5; i++)
+        {
+            z = abs(z) - float3(0.7f, 0.7f, 0.7f);
+            float len = length(z);
+            
+            julia = len;
+            juliaStrength += 1.0f / (0.1f + len * len);
+            
+            if (len > 3.0f) break;
+        }
+        
+        // Normalize and threshold to get distinct regions
+        juliaStrength = fmod(juliaStrength * 0.5f, 1.0f);
+        
+        // Create CLEAR selection: only grow in bright Julia regions
+        float shouldGrow = step(0.6f, juliaStrength) * step(juliaStrength, 0.95f);
+        
+        // Oscillating growth - goes back and forth
+        if (shouldGrow > 0.5f)
+        {
+            // Sine wave oscillation - grows and shrinks smoothly
+            float oscillation = sin(growthTime * 2.0f * 3.14159f);
+            
+            // Smaller, subtler bulges
+            float bulge = sin(julia * 10.0f) * 0.35f;
+            bulge *= max(0.0f, oscillation);
+            
+            // Apply growth only to selected region
+            deformed.xyz += normal * bulge * 0.4f * regionMask;
+        }
+    }
+    
+    // Add wave deformation on top
+    float waveFreq1 = 2.5f;
+    float waveFreq2 = 1.8f;
+    float waveAmplitude = 0.12f;
+    float waveSpeed = 0.4f;
+    
+    float wave1 = sin(worldPos.x * waveFreq1 + time * waveSpeed) * waveAmplitude;
+    float wave2 = sin(worldPos.y * waveFreq2 - time * waveSpeed * 0.7f) * waveAmplitude * 0.6f;
+    float wave3 = sin(worldPos.z * waveFreq1 * 0.8f + time * waveSpeed * 0.5f) * waveAmplitude * 0.4f;
+    
+    deformed.x += wave2 + wave3 * 0.5f;
+    deformed.y += wave1 * 0.7f;
+    deformed.z += wave3 + wave1 * 0.3f;
+    
+    return deformed;
+}
+
 [NumThreads(16, 1, 1)]
 [OutputTopology("triangle")]
 void main(
@@ -283,7 +358,12 @@ void main(
         {
             // Use TetOffset to find the correct indices in the global buffer
             uint idx = TetIndices[Globals.TetOffset + tetIndex * 4 + i];
-            tet.pos[i] = mul(Vertices[idx], Globals.Model);
+            float4 vertex = Vertices[idx];
+            
+            // Apply deformation in local space before transformation
+            vertex = DeformVertex(vertex, Globals.Time);
+            
+            tet.pos[i] = mul(vertex, Globals.Model);
             tet.pos[i] = mul(tet.pos[i], Globals.View);
         }
 
