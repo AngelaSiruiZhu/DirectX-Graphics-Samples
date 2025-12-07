@@ -16,8 +16,6 @@ struct Constants
     uint RandomizeOrder;
     float3 CameraPos;
     float Time;
-    float3 LightDir;
-    uint TetOffset;
 };
 
 cbuffer SceneConstants : register(b0)
@@ -124,6 +122,85 @@ float3 GetWorldPos(float2 uv, float depth)
     return Globals.CameraPos + rayDir * depth;
 }
 
+float3 GetProceduralBackground(float3 rayDir) {
+    float3 skyTop = float3(0.2, 0.4, 0.8); 
+    float3 horizon = float3(0.6, 0.7, 0.8); 
+    
+    // Sky Gradient
+    float3 col = lerp(horizon, skyTop, pow(max(0, rayDir.y), 0.8));
+    
+    // Ground Plane with Height Map (Ray Marching for Terrain)
+    float groundBaseHeight = -10.0;
+    float terrainAmp = 12.0; 
+    
+    if (rayDir.y < -0.001) {
+        float t = (groundBaseHeight + terrainAmp - Globals.CameraPos.y) / rayDir.y;
+        float step = 0.2; // Reduced from 0.4 to 0.2 to prevent holes
+        
+        for(int i=0; i<150; i++) { // Increased from 60 to 150 to maintain distance
+            float3 p = Globals.CameraPos + rayDir * t;
+            float h = groundBaseHeight + fbm(p * 0.1) * terrainAmp;
+            
+            if(p.y < h) {
+                // Hit! Refine intersection (Binary Search) to remove "steps"
+                float t_min = t - step;
+                float t_max = t;
+                for(int j=0; j<5; j++) {
+                    float t_mid = (t_min + t_max) * 0.5;
+                    float3 p_mid = Globals.CameraPos + rayDir * t_mid;
+                    float h_mid = groundBaseHeight + fbm(p_mid * 0.1) * terrainAmp;
+                    if(p_mid.y < h_mid) t_max = t_mid;
+                    else t_min = t_mid;
+                }
+                t = t_max;
+                p = Globals.CameraPos + rayDir * t;
+                h = groundBaseHeight + fbm(p * 0.1) * terrainAmp;
+
+                // Calculate normal
+                float d = 0.1; // Smaller delta for sharper normals
+                float h_x = groundBaseHeight + fbm((p + float3(d,0,0)) * 0.1) * terrainAmp;
+                float h_z = groundBaseHeight + fbm((p + float3(0,0,d)) * 0.1) * terrainAmp;
+                float3 normal = normalize(float3(h - h_x, d, h - h_z));
+                
+                float light = saturate(dot(normal, normalize(float3(0.5, 1.0, -0.5)))) * 0.6 + 0.4;
+                
+                // --- Material Colors ---
+                float3 grass = float3(0.1, 0.35, 0.1); 
+                float3 dirt  = float3(0.4, 0.3, 0.2);  
+                float3 rock  = float3(0.25, 0.25, 0.3); 
+                float3 snow  = float3(0.9, 0.9, 0.95);   
+
+                // Noise for variation
+                float n = fbm(p * 0.5);
+
+                // 1. Low altitude: Mix Grass and Dirt
+                // Shifted smoothstep to favor grass (0.0) over dirt (1.0)
+                float3 lowLayer = lerp(grass, dirt, smoothstep(0.45, 0.75, n));
+
+                // 2. Mid altitude: Transition to Rock
+                // Raised the altitude where rock starts to allow grass to climb higher
+                float rockMix = smoothstep(-3.0, -1.0, p.y + n * 2.0);
+                float3 midLayer = lerp(lowLayer, rock, rockMix);
+
+                // 3. High altitude: Snow caps
+                // Snow starts higher up (less snow)
+                float snowMix = smoothstep(-3.0, -1.0, p.y + n * 1.0);
+                // Stricter slope constraint: Snow only on flatter surfaces
+                snowMix *= smoothstep(0.6, 0.9, normal.y);
+
+                float3 ground = lerp(midLayer, snow, snowMix);
+                ground *= light;
+
+                float fog = 1.0 - exp(-t * 0.015);
+                col = lerp(ground, horizon, fog);
+                break;
+            }
+            t += step; 
+        }
+    }
+    return col;
+}
+
 float4 main(PSIn input) : SV_Target
 {
     float2 uv = input.Tex;
@@ -159,23 +236,18 @@ float4 main(PSIn input) : SV_Target
         float cloudTransmittance = 1.0;
         float3 accumulatedLight = 0;
         
-        float3 lightDir = normalize(Globals.LightDir);
-        float3 lightColor = float3(1.0, 0.9, 0.7) * 2.0; // Boosted intensity
+        float3 lightPos = float3(0,0,0);
+        float3 lightColor = float3(1.0, 0.9, 0.7) * 0.05; 
+
+        // Calculate Ray Direction for background and cloud
+        float2 ndc = uv * 2.0 - 1.0;
+        ndc.y = -ndc.y;
+        float4 clipFar = float4(ndc, 1.0, 1.0);
+        float4 worldFar = mul(clipFar, Globals.InvViewProj);
+        worldFar /= worldFar.w;
+        float3 rayDir = normalize(worldFar.xyz - Globals.CameraPos);
 
         if (front < back) {
-            // Reconstruct ray direction
-            float2 ndc = uv * 2.0 - 1.0;
-            ndc.y = -ndc.y;
-            float4 clipFar = float4(ndc, 1.0, 1.0);
-            float4 worldFar = mul(clipFar, Globals.InvViewProj);
-            worldFar /= worldFar.w;
-            
-            float3 rayDir = normalize(worldFar.xyz - Globals.CameraPos);
-            
-            // Phase function (Forward scattering)
-            float cosTheta = dot(rayDir, lightDir);
-            float g = 0.6; // Scattering asymmetry
-            float phase = HenyeyGreenstein(g, cosTheta);
             
             float dist = front;
             float stepSize = 0.02; 
@@ -190,20 +262,33 @@ float4 main(PSIn input) : SV_Target
                 float density = saturate(noiseDensity * 2.0) * edgeFade; 
 
                 if (density > 0.0001) { 
-                    // Shadow march towards light (3 samples along lightDir)
+                    float distToLight = length(p);
+                    
+                    // Shadow march towards light (3 samples)
                     float shadowDensity = 0;
-                    // Use larger steps for shadow to escape volume faster
-                    shadowDensity += GetDensity( (p + lightDir * 0.5) * Globals.Density);
-                    shadowDensity += GetDensity( (p + lightDir * 1.0) * Globals.Density);
-                    shadowDensity += GetDensity( (p + lightDir * 2.0) * Globals.Density);
+                    float3 s1 = p * 0.75;
+                    float3 s2 = p * 0.50;
+                    float3 s3 = p * 0.25;
+                    shadowDensity += GetDensity(s1 * Globals.Density);
+                    shadowDensity += GetDensity(s2 * Globals.Density);
+                    shadowDensity += GetDensity(s3 * Globals.Density);
                     
-                    // Reduced absorption coefficient for shadows (0.5 instead of 1.5)
-                    float lightTransmittance = exp(-shadowDensity * 0.5); 
+                    // Beer's Law for direct light absorption
+                    float directTransmittance = exp(-shadowDensity * 1.5); 
                     
-                    float3 sunDirectColor = lightColor * lightTransmittance * phase;
-                    float3 ambient = float3(0.1, 0.15, 0.3) * 0.5 + float3(0.5,0.5,0.5)*0.2; // Sky ambient
+                    // Powder Effect / Multiple Scattering Approximation
+                    // Simulates light diffusing through the cloud, illuminating darker areas
+                    float scatterTransmittance = exp(-shadowDensity * 0.5); 
                     
-                    float3 incoming = sunDirectColor + ambient; 
+                    float attenuation = 1.0 / (0.1 + distToLight * distToLight * 0.05); 
+                    
+                    float3 sunColor = float3(1.0, 0.95, 0.9) * 0.5; //directional light
+                    float3 ambient = float3(0.6, 0.6, 0.6); // Reduced ambient to compensate for scattering
+                    
+                    // Combine direct light and scattered light
+                    float3 lightContribution = lightColor * (directTransmittance + scatterTransmittance * 0.5) * attenuation;
+                    
+                    float3 incoming = lightContribution + sunColor + ambient;
                     
                     float stepTransmittance = exp(-density * stepSize * 1.0);
                     float3 scattered = incoming * density * stepSize;
@@ -215,12 +300,11 @@ float4 main(PSIn input) : SV_Target
             }
         }
         
-        float3 skyColor = float3(0.5, 0.7, 1.0);
+        float3 skyColor = GetProceduralBackground(rayDir);
         float3 finalCloudColor = accumulatedLight + skyColor * cloudTransmittance;
 
         // Screen Space God Rays using Radial Blur
-        // Approximate light source screen position for directional light (far away in lightDir)
-        float4 lightClip = mul(float4(Globals.CameraPos + lightDir * 1000.0, 1.0), Globals.ViewProj); 
+        float4 lightClip = mul(float4(lightPos, 1.0), Globals.ViewProj); // light source screen position
         float2 lightScreen = lightClip.xy / lightClip.w;
         lightScreen = lightScreen * 0.5 + 0.5;
         lightScreen.y = 1.0 - lightScreen.y;
@@ -249,15 +333,15 @@ float4 main(PSIn input) : SV_Target
             if (sFront < sBack) // Inside volume
             {
                 // Sample 3 points to catch internal density structure
-                float3 rayDirEye = normalize(GetWorldPos(coord, sBack) - Globals.CameraPos); // Renamed to avoid clash
+                float3 rayDir = normalize(GetWorldPos(coord, sBack) - Globals.CameraPos);
                 float step = (sBack - sFront) / 3.0;
                 float maxDensity = 0;
                 
                 // Check 3 points along the ray segment inside the box
                 // use max() because if ANY part is dense, it blocks the light.
-                float3 p1 = Globals.CameraPos + rayDirEye * (sFront + step * 0.5);
-                float3 p2 = Globals.CameraPos + rayDirEye * (sFront + step * 1.5);
-                float3 p3 = Globals.CameraPos + rayDirEye * (sFront + step * 2.5);
+                float3 p1 = Globals.CameraPos + rayDir * (sFront + step * 0.5);
+                float3 p2 = Globals.CameraPos + rayDir * (sFront + step * 1.5);
+                float3 p3 = Globals.CameraPos + rayDir * (sFront + step * 2.5);
                 
                 maxDensity = max(maxDensity, GetDensityLowQ(p1 * Globals.Density));
                 maxDensity = max(maxDensity, GetDensityLowQ(p2 * Globals.Density));
@@ -267,17 +351,16 @@ float4 main(PSIn input) : SV_Target
                 float block = smoothstep(0.2, 0.6, maxDensity);
                 sampleTransmittance = 1.0 - block;
                 
-                // No distance attenuation for directional light god rays
-                // float distToLight = length(p2); 
-                // float attenuation = 1.0 / (0.1 + distToLight * distToLight * 0.2);
-                // sampleTransmittance *= attenuation;
+                float distToLight = length(p2); // Use middle point distance
+                float attenuation = 1.0 / (0.1 + distToLight * distToLight * 0.2);
+                sampleTransmittance *= attenuation;
             }
             
             godRayColor += sampleTransmittance * illuminationDecay * weight;
             illuminationDecay *= decay;
         }
         
-        color = finalCloudColor + godRayColor * float3(0.4, 0.3, 0.2);
+        color = finalCloudColor + godRayColor * float3(0.5, 0.4, 0.3);
         alpha = 1.0f;
         break;
     }
