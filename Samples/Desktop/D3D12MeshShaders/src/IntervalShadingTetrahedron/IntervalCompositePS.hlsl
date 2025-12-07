@@ -152,18 +152,20 @@ float fbm2D(float2 p)
 //for cloud density
 float GetDensity(float3 p)
 {
-    float d = fbm(p * 3.0 + float3(0, 0, Globals.Time * 0.5));
-    float corrosion = noise(p * 4.0 - float3(0, Globals.Time * 1.0, 0));
-    d -= corrosion * 0.2;
-    return saturate((d - 0.05) * 2.0);
+    float base = noise(p * 1.2 + float3(0.0, 0.0, Globals.Time * 0.1));
+    float drift = noise(p * 0.45 + float3(Globals.Time * 0.05, 0.0, 0.0));
+    float d = lerp(base, drift, 0.35f);
+    d = smoothstep(0.3f, 0.8f, d);
+    return saturate(d);
 }
 
 float GetDensityLowQ(float3 p)
 {
-    float d = noise(p * 3.0 + float3(0, 0, Globals.Time * 0.5));
-    float corrosion = noise(p * 4.0 - float3(0, Globals.Time * 1.0, 0));
-    d -= corrosion * 0.2;
-    return saturate((d - 0.05) * 2.0);
+    float base = noise(p * 1.0 + float3(0.0, 0.0, Globals.Time * 0.1));
+    float drift = noise(p * 0.4 + float3(Globals.Time * 0.05, 0.0, 0.0));
+    float d = lerp(base, drift, 0.3f);
+    d = smoothstep(0.32f, 0.78f, d);
+    return saturate(d);
 }
 
 float3 DepthToGray(float d)
