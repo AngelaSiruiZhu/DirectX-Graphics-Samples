@@ -329,9 +329,9 @@ float4 main(PSIn input) : SV_Target
 
         float2 delta = (uv - lightScreen);
         int samples = 64;
-        float density = 0.95;
-        float weight  = 0.15; // Tripled the weight
-        float decay   = 0.96; // Faster decay for shorter rays
+        float density = 0.5;
+        float weight  = 0.12; 
+        float decay   = 0.96; 
 
         // Pre-calculate air attenuation
         float airDist = length(Globals.CameraPos - lightPos);
@@ -339,7 +339,10 @@ float4 main(PSIn input) : SV_Target
 
         delta *= (density / samples);
 
-        float2 coord = uv;
+        // jitter to reduce banding
+        float jitter = hash(float3(uv * 1024.0, 0.0));
+        float2 coord = uv - delta * jitter;
+
         float illuminationDecay = 1.0;
         float3 godRayColor = 0;
 
