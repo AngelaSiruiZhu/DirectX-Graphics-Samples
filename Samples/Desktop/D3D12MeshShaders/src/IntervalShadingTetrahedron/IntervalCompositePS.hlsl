@@ -24,6 +24,77 @@ Texture2D<float>  BackTex    : register(t3);
 Texture2D<float>  OpticalTex : register(t4);
 SamplerState LinearClamp      : register(s0);
 
+struct DepthNeighborhood
+{
+    float coverage;
+    float frontAvg;
+    float backAvg;
+};
+
+static const float2 kBlurOffsets[9] =
+{
+    float2(0.0f, 0.0f),
+    float2(1.0f, 0.0f),
+    float2(-1.0f, 0.0f),
+    float2(0.0f, 1.0f),
+    float2(0.0f, -1.0f),
+    float2(1.0f, 1.0f),
+    float2(1.0f, -1.0f),
+    float2(-1.0f, 1.0f),
+    float2(-1.0f, -1.0f)
+};
+
+static const float kBlurWeights[9] =
+{
+    0.28f,
+    0.125f,
+    0.125f,
+    0.125f,
+    0.125f,
+    0.045f,
+    0.045f,
+    0.045f,
+    0.045f
+};
+
+DepthNeighborhood GatherDepthNeighborhood(float2 uv)
+{
+    uint width, height;
+    FrontTex.GetDimensions(width, height);
+    float2 texel = 1.0f / float2(width, height);
+
+    DepthNeighborhood nb;
+    nb.coverage = 0.0f;
+    nb.frontAvg = 0.0f;
+    nb.backAvg = 0.0f;
+
+    [unroll]
+    for (int i = 0; i < 9; ++i)
+    {
+        float2 sampleUV = uv + kBlurOffsets[i] * texel;
+        float sFront = FrontTex.SampleLevel(LinearClamp, sampleUV, 0.0f);
+        float sBack  = BackTex.SampleLevel(LinearClamp, sampleUV, 0.0f);
+
+        bool valid = (sFront < sBack) && (sFront < 1e30f) && (sBack < 1e30f);
+        if (valid)
+        {
+            float w = kBlurWeights[i];
+            nb.coverage += w;
+            nb.frontAvg += w * sFront;
+            nb.backAvg += w * sBack;
+        }
+    }
+
+    if (nb.coverage > 0.0f)
+    {
+        float inv = 1.0f / nb.coverage;
+        nb.frontAvg *= inv;
+        nb.backAvg *= inv;
+    }
+
+    return nb;
+}
+
 struct PSIn
 {
     float4 Position : SV_Position;
@@ -243,8 +314,35 @@ float4 main(PSIn input) : SV_Target
 
     case 5:
     {
+        DepthNeighborhood neighbourhood = GatherDepthNeighborhood(uv);
+        bool centerValid = (front < back) && (front < 1e30f) && (back < 1e30f);
+        float coverageBoost = saturate(neighbourhood.coverage + (centerValid ? 0.25f : 0.0f));
+        float edgeBlend = 1.0f - smoothstep(0.3f, 0.95f, coverageBoost);
+        float coverageWeight = smoothstep(0.1f, 0.85f, coverageBoost);
+
+        if (neighbourhood.coverage > 0.0f)
+        {
+            if (!centerValid)
+            {
+                front = neighbourhood.frontAvg;
+                back = neighbourhood.backAvg;
+                centerValid = (front < back);
+            }
+            else
+            {
+                float blendWeight = edgeBlend * 0.75f;
+                front = lerp(front, neighbourhood.frontAvg, blendWeight);
+                back = lerp(back, neighbourhood.backAvg, blendWeight);
+            }
+        }
+
+        float hullPadding = edgeBlend * 0.45f;
+        front = max(front - hullPadding, 0.0f);
+        back += hullPadding;
+
+        bool hasVolume = (centerValid || coverageWeight > 0.0f) && (front < back);
+
         //cloud rendering
-        float3 cloudColor = 0;
         float cloudTransmittance = 1.0;
         float3 accumulatedLight = 0;
 
@@ -260,27 +358,48 @@ float4 main(PSIn input) : SV_Target
 
         float3 rayDir = normalize(worldFar.xyz - Globals.CameraPos);
 
-        if (front < back)
+        if (hasVolume)
         {
             float dist = front;
-            float stepSize = 0.02;
+            float baseStep = 0.02f;
+            float stepSize = lerp(baseStep * 1.2f, baseStep, coverageWeight);
+            float fadeWidthBase = lerp(0.3f, 0.55f, coverageWeight);
+            float densityScale = lerp(0.3f, 1.0f, coverageWeight);
 
             for (int i = 0; i < 64; i++)
             {
-                if (dist >= back || cloudTransmittance < 0.01) break;
+                if (dist >= back || cloudTransmittance < 0.01f) break;
 
                 float3 p = Globals.CameraPos + rayDir * dist;
 
                 float densityBase = GetDensity(p * Globals.Density);
-                float edgeFade = saturate((dist - front) / 0.5) * 
-                                 saturate((back - dist) / 0.5);
-                float density = saturate(densityBase * 2.0) * edgeFade;
+                float fadeFront = saturate((dist - front) / fadeWidthBase);
+                float fadeBack  = saturate((back - dist) / fadeWidthBase);
+                float edgeFade = pow(fadeFront * fadeBack, lerp(0.55f, 1.0f, coverageWeight));
+                float density = saturate(densityBase * 2.0f) * edgeFade * densityScale;
 
-                if (density > 0.0001)
+                if (density > 0.0001f)
                 {
                     float3 lDir = normalize(lightPos - p);
                     float distToLight = length(lightPos - p);
 
+<<<<<<< HEAD
+                    float shadowDensity = 0.0f;
+                    shadowDensity += GetDensity(p * 0.75f * Globals.Density);
+                    shadowDensity += GetDensity(p * 0.50f * Globals.Density);
+                    shadowDensity += GetDensity(p * 0.25f * Globals.Density);
+
+                    float directT   = exp(-shadowDensity * 1.5f);
+                    float scatterT  = exp(-shadowDensity * 0.5f);
+                    float attenuation = 1.0f / (0.1f + distToLight * distToLight * 0.05f);
+
+                    float3 sunColor = float3(1.0,0.95,0.9) * 0.5f;
+                    float3 ambient  = float3(0.6,0.6,0.6);
+
+                    float3 incoming =
+                        lightColor * (directT + scatterT * 0.5f) * attenuation
+                        + sunColor + ambient;
+=======
                     // Shadow march
                     float shadowDensity = 0;
                     shadowDensity += GetDensity((p + lDir * 2.0) * Globals.Density);
@@ -299,6 +418,7 @@ float4 main(PSIn input) : SV_Target
                     float3 incoming =
                         lightColor * 100 * (directT + scatterT * 0.001) * attenuation
                         + ambient;
+>>>>>>> refs/remotes/origin/Experiment
 
                     float stepTransmittance = exp(-density * stepSize);
                     float3 scattered = incoming * density * stepSize;
@@ -311,8 +431,12 @@ float4 main(PSIn input) : SV_Target
             }
         }
 
-        // terrain background
         float3 skyColor = GetProceduralBackground(rayDir);
+<<<<<<< HEAD
+        float safeTrans = lerp(1.0f, cloudTransmittance, coverageWeight);
+        float3 finalCloud = accumulatedLight + skyColor * safeTrans;
+        finalCloud = lerp(skyColor, finalCloud, coverageWeight);
+=======
 
         // Visualize light source (Sun)
         float3 lVec = normalize(lightPos - Globals.CameraPos);
@@ -320,6 +444,7 @@ float4 main(PSIn input) : SV_Target
         skyColor += float3(1.0, 0.8, 0.6) * sun * 100.0;
 
         float3 finalCloud = accumulatedLight + skyColor * cloudTransmittance;
+>>>>>>> refs/remotes/origin/Experiment
 
         // God rays
         float4 lightClip = mul(float4(lightPos, 1.0), Globals.ViewProj);
@@ -328,6 +453,17 @@ float4 main(PSIn input) : SV_Target
         lightScreen.y = 1.0 - lightScreen.y;
 
         float2 delta = (uv - lightScreen);
+<<<<<<< HEAD
+        int samples = 32;
+        float density = 0.9f;
+        float weight  = 0.008f;
+        float decay   = 0.97f;
+
+        delta *= (density / samples);
+
+        float2 coord = uv;
+        float illuminationDecay = 1.0f;
+=======
         int samples = 64;
         float density = 0.5;
         float weight  = 0.12; 
@@ -344,35 +480,41 @@ float4 main(PSIn input) : SV_Target
         float2 coord = uv - delta * jitter;
 
         float illuminationDecay = 1.0;
+>>>>>>> refs/remotes/origin/Experiment
         float3 godRayColor = 0;
 
         for (int i = 0; i < samples; i++)
         {
             coord -= delta;
 
-            float sFront = FrontTex.SampleLevel(LinearClamp, coord, 0);
-            float sBack  = BackTex.SampleLevel(LinearClamp, coord, 0);
+            float sFront = FrontTex.SampleLevel(LinearClamp, coord, 0.0f);
+            float sBack  = BackTex.SampleLevel(LinearClamp, coord, 0.0f);
 
-            float sampleT = 0;
+            float sampleT = 0.0f;
 
             if (sFront < sBack)
             {
                 float3 r = normalize(GetWorldPos(coord, sBack) - Globals.CameraPos);
-                float stepLen = (sBack - sFront) / 3.0;
+                float stepLen = (sBack - sFront) / 3.0f;
 
-                float3 p1 = Globals.CameraPos + r * (sFront + stepLen * 0.5);
-                float3 p2 = Globals.CameraPos + r * (sFront + stepLen * 1.5);
-                float3 p3 = Globals.CameraPos + r * (sFront + stepLen * 2.5);
+                float3 p1 = Globals.CameraPos + r * (sFront + stepLen * 0.5f);
+                float3 p2 = Globals.CameraPos + r * (sFront + stepLen * 1.5f);
+                float3 p3 = Globals.CameraPos + r * (sFront + stepLen * 2.5f);
 
                 float maxD = max(max(GetDensityLowQ(p1 * Globals.Density),
                                      GetDensityLowQ(p2 * Globals.Density)),
                                      GetDensityLowQ(p3 * Globals.Density));
 
-                float block = smoothstep(0.2, 0.6, maxD);
-                sampleT = 1.0 - block;
+                float block = smoothstep(0.2f, 0.6f, maxD);
+                sampleT = (1.0f - block) * coverageWeight;
 
+<<<<<<< HEAD
+                float distToLight = length(p2);
+                float atten = 1.0f / (0.1f + distToLight * distToLight * 0.2f);
+=======
                 float distToLight = length(p2 - lightPos);
                 float atten = 1.0 / (1.0 + distToLight * distToLight * 0.01);
+>>>>>>> refs/remotes/origin/Experiment
                 sampleT *= atten;
             }
             else
@@ -384,7 +526,7 @@ float4 main(PSIn input) : SV_Target
             illuminationDecay *= decay;
         }
 
-        color = finalCloud + godRayColor * float3(0.5, 0.4, 0.3);
+        color = finalCloud + godRayColor * float3(0.5, 0.4, 0.3) * coverageWeight;
         break;
         }
     }
