@@ -155,8 +155,8 @@ float GetDensity(float3 p)
     float base = noise(p * 1.2 + float3(0.0, 0.0, Globals.Time * 0.1));
     float drift = noise(p * 0.45 + float3(Globals.Time * 0.025, 0.0, 0.0));
     float d = lerp(base, drift, 0.35f);
-    d = smoothstep(0.3f, 0.8f, d);
-    return saturate(d);
+    d = smoothstep(0.42f, 0.85f, d);
+    return saturate(d * 0.45f);
 }
 
 float GetDensityLowQ(float3 p)
@@ -164,8 +164,8 @@ float GetDensityLowQ(float3 p)
     float base = noise(p * 1.0 + float3(0.0, 0.0, Globals.Time * 0.1));
     float drift = noise(p * 0.4 + float3(Globals.Time * 0.025, 0.0, 0.0));
     float d = lerp(base, drift, 0.3f);
-    d = smoothstep(0.32f, 0.78f, d);
-    return saturate(d);
+    d = smoothstep(0.42f, 0.82f, d);
+    return saturate(d * 0.45f);
 }
 
 float3 DepthToGray(float d)
@@ -372,7 +372,7 @@ float4 main(PSIn input) : SV_Target
             float baseStep = 0.02f;
             float stepSize = lerp(baseStep * 1.2f, baseStep, coverageWeight);
             float fadeWidthBase = lerp(0.3f, 0.55f, coverageWeight);
-            float densityScale = lerp(0.3f, 1.0f, coverageWeight);
+            float densityScale = lerp(0.12f, 0.5f, coverageWeight);
 
             for (int i = 0; i < 64; i++)
             {
@@ -410,7 +410,7 @@ float4 main(PSIn input) : SV_Target
                         lightColor * 100 * (directT + scatterT * 0.001) * attenuation
                         + ambient;
 
-                    float stepTransmittance = exp(-density * stepSize);
+                    float stepTransmittance = exp(-density * stepSize * 0.6f);
                     float3 scattered = incoming * density * stepSize;
 
                     accumulatedLight += scattered * cloudTransmittance;
