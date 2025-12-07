@@ -1230,14 +1230,18 @@ void IntervalShadingTetrahedron::OpenMeshFile()
             // Reset Scene to single object
             m_vertices = md.Vertices;
             m_tetIndices = md.Indices;
-            
+
             m_sceneObjects.clear();
             SceneObject so;
             so.MeshName = "UserSelected";
-            so.WorldMatrix = m_modelMatrix; 
+            so.WorldMatrix = m_modelMatrix;
             so.IndexCount = static_cast<UINT>(m_tetIndices.size());
             so.MeshIndex = 0;
             m_sceneObjects.push_back(so);
+
+            // Re-upload buffers to GPU (this was missing!)
+            UploadBuffer(&m_vertexBuffer, m_vertices.data(), m_vertices.size() * sizeof(XMFLOAT4));
+            UploadBuffer(&m_tetBuffer, m_tetIndices.data(), m_tetIndices.size() * sizeof(uint32_t));
 
             CreateSrvHeap();
             UpdateConstants();
