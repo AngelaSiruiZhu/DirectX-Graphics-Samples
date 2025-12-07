@@ -1,57 +1,108 @@
-# Cloud Generation Architecture and Future Direction
+# Cloud Generation Architecture and Evolution
 
-## Current Status
-*   **Generation Method:** Offline procedural generation via Node.js script (`generate_cloud.js`).
-*   **Technique:** "Structure Mode" - Generates a warped tetrahedral grid/sphere.
-*   **Result:** A static `.vtk` file loaded at runtime.
-*   **Limitation:** The mesh is frozen. Animation is limited to internal density noise, not shape deformation.
+## Current Implementation (Working)
 
-## Architectural Proposal: Hybrid Real-Time Generation
-To enable real-time shape deformation and interaction, we propose moving the deformation logic to the GPU pipeline.
+### Generation Pipeline
+1. **Offline Generation:** Node.js script `generate_cloud.js` creates tetrahedral meshes
+2. **Working Modes:** `structure` and `soup` produce usable cloud shapes
+3. **Multi-Cloud Scenes:** `scene.json` defines multiple cloud instances with varied transforms
+4. **Runtime Rendering:** Interval Shading with procedural density noise + lighting
 
-### The Hybrid Pipeline
-1.  **CPU (Initialization Phase):**
-    *   Generates a **Base Topology** (connectivity).
-    *   This is a coarse, regular structure (e.g., a simple subdivision of a bounding box or sphere into tetrahedra).
-    *   Focus is on creating a sufficient "budget" of vertices and tetrahedra, not the final shape.
-    *   This "Template Mesh" is uploaded to the GPU once.
+### Cloud Meshes Generated
+We generated 6 unique cloud meshes (`cloud_1.vtk` through `cloud_6.vtk`) using the `structure` mode with different random seeds. These provide shape variety when placed in scenes with different scales and rotations.
 
-2.  **GPU (Mesh Shader Phase):**
-    *   Receives the Template Mesh.
-    *   **Deformation Kernel:** Applies a procedural displacement function (FBM Noise) to vertices in real-time.
-    *   `NewPosition = OriginalPosition + Noise(OriginalPosition + Time) * DistortionStrength`
-    *   **Culling:** Can dynamically discard tetrahedra that move outside the view or fall below a density threshold (using `SV_CullPrimitive` or simply outputting 0 triangles).
+Additional test meshes:
+- `cloud_structure.vtk` - Original structure mode output
+- `cloud_smooth.vtk`, `cloud_smooth_hires.vtk` - Smoothed variants
+- `cloud_multilobe.vtk`, `cloud_multilobe_hires.vtk` - Multi-lobe experiments
+- `cloud_cumulus.vtk` - Cumulus-style shape
+- Various `test_*.vtk` and `candidate_*.vtk` from experimentation
 
-### Benefits
-*   **Dynamic:** Clouds can drift, morph, and react to "wind" parameters instantly.
-*   **Efficient:** No CPU-to-GPU bandwidth overhead per frame. Utilizes the Mesh Shader's parallel processing power.
-*   **Interactive:** User can tweak noise frequency, amplitude, and speed at runtime.
+### Scene Configuration
+`scene.json` defines a multi-cloud sky with 25 clouds:
+- **Position spread:** X: -48 to +50, Z: -35 to +50
+- **Height variation:** Y: 2 to 25
+- **Scale variation:** 4.0 to 14.0, with some clouds stretched taller (Y scale up to 14)
+- **Rotation variety:** Different Y-axis rotations for visual diversity
+- Uses all 6 cloud meshes cycling through
+
+### Shader Tuning
+Key parameters tuned for visual quality:
+
+**Light Position:** `float3(0.0, -35.0, 0.0)` - Sun height above clouds
+
+**Light Intensity:** `0.24` - Balanced for visible cloud illumination
+
+**Cloud Density Corrosion:** `0.2` (reduced from 0.4) - Less aggressive erosion for fuller clouds
+
+**God Rays:** Jittered sampling to eliminate banding artifacts
 
 ---
 
-## Retrospective: Procedural Mesh Generation Experiments (Failed/Abandoned)
+## Generation Modes Explained
 
-We explored several offline algorithms to generate complex, non-convex cloud geometries with holes using tetrahedra.
+### Structure Mode (Recommended)
+- Creates a warped voxel grid using domain warping
+- 16x16x16 base grid at resolution 32
+- FBM noise with 5 octaves shapes the density field
+- Marching tetrahedra extracts the surface
+- **Result:** Connected, watertight mesh with organic shape
 
-### 1. Constructive Clusters (`cluster` mode)
-*   **Concept:** Plant hundreds of small spherical "puffs" (icosahedrons) in a volumetric domain defined by noise.
-*   **Goal:** Create a lumpy, "cumulus" shape by aggregating small parts.
-*   **Result:** The cloud looked like a disconnected "bag of marbles." Tetrahedra didn't merge into a continuous surface, leading to "mirror-like" artifacts where internal faces were visible and lighted incorrectly. Increasing density just created a massive, heavy mesh without solving the topology issues.
+### Soup Mode
+- Probabilistic disconnected tetrahedra
+- Creates floating islands and wisps
+- Good for chaotic, broken cloud formations
+- Higher performance cost due to many small pieces
 
-### 2. Skeleton / Alpha Shape (`skeleton` mode)
-*   **Concept:** Scatter points in lobes, then connect nearest neighbors to form a "web" or skeleton of tetrahedra. Prune long edges to create holes.
-*   **Goal:** A sparse, holey topology with low poly count.
-*   **Result:** The mesh was too jagged and "wireframe-like." It lacked the rounded, billowy surface of a cloud. Attempting to smooth it or increase density resulted in either an explosion of tetrahedra (1M+) or a shape that was still too sharp and unnatural.
+---
 
-### 3. Hollow Shell (`shell` mode)
-*   **Concept:** Generate points on the surface of lobes, cull them with noise to make holes, extrude inwards to create a "crust," and triangulate locally.
-*   **Goal:** Focus detail on the visible surface, creating a "thick skin" with empty interior.
-*   **Result:** While efficient, the resulting topology was difficult to make "watertight" and smooth. The transitions between the outer shell and the holes were sharp and artificial.
+## Build System
 
-### Conclusion
-Procedurally generating *good* tetrahedral meshes for organic clouds from scratch is highly complex. The artifacts (internal faces, jagged edges, lack of smoothness) are hard to overcome without advanced volumetric meshing algorithms (e.g., Isosurface extraction -> Tetrahedralization).
+### build.bat Script
+Critical fix: MSBuild doesn't always detect shader changes. The `build.bat` script:
+1. Touches all `.hlsl` files (updates timestamps)
+2. Runs MSBuild
+3. Ensures shaders are always recompiled
 
-**Future Direction:**
-*   Abandon complex offline procedural mesh generation for now.
-*   Focus on **Hybrid Deformation** (Option 3): Use a simple, high-quality base mesh (like a sphere or a reliable grid) and heavily deform it in the **Mesh Shader** to create the interesting shapes.
-*   Alternatively, import high-quality meshes generated by external tools.
+**Always use `build.bat` instead of calling MSBuild directly.**
+
+---
+
+## Retrospective: Failed Experiments
+
+### 1. Cluster Mode (Abandoned)
+- **Concept:** Hundreds of small spherical "puffs" aggregated
+- **Result:** "Bag of marbles" - disconnected geometry with mirror-like internal face artifacts
+
+### 2. Skeleton Mode (Abandoned)
+- **Concept:** Scatter points, connect nearest neighbors, prune long edges
+- **Result:** Too jagged and wireframe-like, lacked billowy roundness
+
+### 3. Shell Mode (Abandoned)
+- **Concept:** Surface points with inward extrusion for hollow shell
+- **Result:** Non-watertight, sharp hole transitions
+
+---
+
+## Camera System
+
+### Free-Fly Camera
+Replaced orbit camera with free-fly for better scene exploration:
+- **WASD:** Move relative to view direction (uses view matrix vectors)
+- **Arrow Keys:** Look around (yaw/pitch)
+- **Starting Position:** Y=-20 (below terrain), looking up at clouds
+
+Implementation extracts actual view vectors from inverse view matrix for accurate movement.
+
+---
+
+## Future Direction
+
+### Hybrid GPU Deformation
+The next evolution would move deformation to the Mesh Shader:
+1. **CPU:** Upload simple "template mesh" once
+2. **GPU:** Apply procedural displacement per-frame
+3. **Benefits:** Dynamic morphing, wind effects, no CPU bandwidth overhead
+
+### Alternative: External Tools
+Import high-quality meshes from specialized volumetric modeling tools (Houdini, Blender) rather than procedural generation.
