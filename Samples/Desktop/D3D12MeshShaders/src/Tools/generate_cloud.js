@@ -738,18 +738,32 @@ function getDensity(x, y, z) {
         console.log(`Generated Shell with ${indices.length} tets.`);
     }
 
+// =============================================================================
+// MODE SELECTION
+// =============================================================================
+// Working modes:
+//   - 'soup'      : Disconnected tetrahedra shards. Good for scattered cloud look.
+//   - 'structure' : Connected warped grid. Good for solid organic shapes.
+//
+// Failed/Abandoned modes (commented out):
+//   - 'cluster'   : "Bag of marbles" - internal face artifacts, mirror-like lighting issues
+//   - 'skeleton'  : Too jagged/wireframe-like, can't smooth without exploding tet count
+//   - 'shell'     : Not watertight, sharp transitions at holes
+// =============================================================================
+
 if (CONFIG.mode === 'soup') {
     generateSoup();
 } else if (CONFIG.mode === 'structure') {
     generateStructure();
-} else if (CONFIG.mode === 'cluster') {
-    generateCluster();
-} else if (CONFIG.mode === 'skeleton') {
-    generateSkeleton();
-} else if (CONFIG.mode === 'shell') {
-    generateShell();
+// } else if (CONFIG.mode === 'cluster') {
+//     generateCluster();  // ABANDONED: "bag of marbles" artifacts
+// } else if (CONFIG.mode === 'skeleton') {
+//     generateSkeleton(); // ABANDONED: too jagged, can't smooth properly
+// } else if (CONFIG.mode === 'shell') {
+//     generateShell();    // ABANDONED: not watertight, sharp edges
 } else {
-    // Default
+    console.error(`Unknown mode: ${CONFIG.mode}. Valid modes: soup, structure`);
+    process.exit(1);
 }
 
 console.log(`Vertices: ${vertices.length}`);
@@ -829,12 +843,27 @@ if (CONFIG.smoothIters > 0 && CONFIG.mode !== 'soup') {
 // --- Output Writer ---
 const stream = fs.createWriteStream(CONFIG.outputFile);
 stream.once('open', () => {
+    // Write Metadata Header
+    const timestamp = new Date().toISOString();
+    stream.write(`# CLOUD_GEN_METADATA\n`);
+    stream.write(`# generated=${timestamp}\n`);
+    stream.write(`# mode=${CONFIG.mode}\n`);
+    stream.write(`# shape=${CONFIG.shape}\n`);
+    stream.write(`# resolution=${CONFIG.resolution}\n`);
+    stream.write(`# threshold=${CONFIG.threshold}\n`);
+    stream.write(`# scale=${CONFIG.scale}\n`);
+    stream.write(`# octaves=${CONFIG.octaves}\n`);
+    stream.write(`# persistance=${CONFIG.persistance}\n`);
+    stream.write(`# lacunarity=${CONFIG.lacunarity}\n`);
+    stream.write(`# jitter=${CONFIG.jitter}\n`);
+    stream.write(`# smoothIters=${CONFIG.smoothIters}\n`);
+    stream.write(`# smoothStr=${CONFIG.smoothStr}\n`);
+    stream.write(`# vertices=${vertices.length}\n`);
+    stream.write(`# tetrahedra=${indices.length}\n`);
+    stream.write(`# END_METADATA\n`);
+
     // Write Vertices
     // Format: v x y z
-    // Scale vertices to be centered at 0 and roughly unit size?
-    // The C++ code scales it automatically, so raw integer grid coords are fine.
-    // But centering them helps debugging. Let's keep them as integers for precision.
-    
     for (const v of vertices) {
         stream.write(`v ${v[0]} ${v[1]} ${v[2]}\n`);
     }

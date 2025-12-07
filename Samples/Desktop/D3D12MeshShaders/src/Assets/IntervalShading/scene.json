@@ -11,56 +11,56 @@
     "objects": [
         {
             "name": "Hero Cloud 1",
-            "mesh": "cloud_structure.vtk",
+            "mesh": "test_structure_storm_v2.vtk",
             "position": [0.0, 0.0, 0.0],
             "rotation": [0.0, 0.0, 0.0],
             "scale": [3.0, 1.5, 2.5]
         },
         {
             "name": "Structure Cloud 1",
-            "mesh": "cloud_structure.vtk",
+            "mesh": "test_structure_storm_v2.vtk",
             "position": [-8.0, 2.0, 5.0],
             "rotation": [0.5, 1.0, 0.0],
             "scale": [2.0, 1.2, 2.0]
         },
         {
             "name": "Shell Cloud 2",
-            "mesh": "cloud_structure.vtk",
+            "mesh": "test_structure_storm_v2.vtk",
             "position": [7.0, -1.0, 4.0],
             "rotation": [0.0, 2.0, 0.5],
             "scale": [2.5, 1.3, 2.2]
         },
         {
             "name": "Structure Cloud 2",
-            "mesh": "cloud_structure.vtk",
+            "mesh": "test_structure_storm_v2.vtk",
             "position": [2.0, 1.0, -8.0],
             "rotation": [1.0, 0.0, 0.0],
             "scale": [1.8, 1.0, 1.8]
         },
         {
             "name": "Small Puff 1",
-            "mesh": "cloud_structure.vtk",
+            "mesh": "test_structure_storm_v2.vtk",
             "position": [-5.0, -2.0, -5.0],
             "rotation": [2.0, 1.0, 1.0],
             "scale": [1.0, 0.8, 1.0]
         },
         {
             "name": "Small Puff 2",
-            "mesh": "cloud_structure.vtk",
+            "mesh": "test_structure_storm_v2.vtk",
             "position": [5.0, 3.0, -2.0],
             "rotation": [0.0, 3.0, 0.0],
             "scale": [1.2, 0.9, 1.2]
         },
         {
             "name": "Distant Cloud",
-            "mesh": "cloud_structure.vtk",
+            "mesh": "test_structure_storm_v2.vtk",
             "position": [0.0, 5.0, 15.0],
             "rotation": [0.0, 0.5, 0.0],
             "scale": [4.0, 1.5, 3.0]
         },
         {
             "name": "Sun Visualization",
-            "mesh": "cloud_structure.vtk",
+            "mesh": "test_structure_storm_v2.vtk",
             "position": [-25.0, 30.0, -10.0],
             "rotation": [0.0, 0.0, 0.0],
             "scale": [0.5, 0.5, 0.5]
