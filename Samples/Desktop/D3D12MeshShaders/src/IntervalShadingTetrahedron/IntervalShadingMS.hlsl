@@ -259,6 +259,34 @@ bool LineIntersection(float2 L1A, float2 L1B, float2 L2A, float2 L2B, out float2
     return false;
 }
 
+// Deformation function - applies wave-like distortion to vertex positions
+float4 DeformVertex(float4 worldPos, float time)
+{
+    float4 deformed = worldPos;
+    
+    // Wave parameters
+    float waveFreq1 = 2.5f;    // frequency of primary wave
+    float waveFreq2 = 1.8f;    // frequency of secondary wave
+    float waveAmplitude = 0.15f; // amplitude of deformation
+    float speed = 0.4f;        // animation speed
+    
+    // Create multiple wave patterns in different directions
+    float wave1 = sin(worldPos.x * waveFreq1 + time * speed) * waveAmplitude;
+    float wave2 = sin(worldPos.y * waveFreq2 - time * speed * 0.7f) * waveAmplitude * 0.6f;
+    float wave3 = sin(worldPos.z * waveFreq1 * 0.8f + time * speed * 0.5f) * waveAmplitude * 0.4f;
+    
+    // Apply deformation to all axes with decreasing influence
+    deformed.x += wave2 + wave3 * 0.5f;
+    deformed.y += wave1 * 0.7f;
+    deformed.z += wave3 + wave1 * 0.3f;
+    
+    // Add scale/breathing effect
+    float scale = 1.0f + sin(time * speed * 0.5f) * 0.08f;
+    deformed.xyz *= scale;
+    
+    return deformed;
+}
+
 [NumThreads(16, 1, 1)]
 [OutputTopology("triangle")]
 void main(
@@ -283,7 +311,12 @@ void main(
         {
             // Use TetOffset to find the correct indices in the global buffer
             uint idx = TetIndices[Globals.TetOffset + tetIndex * 4 + i];
-            tet.pos[i] = mul(Vertices[idx], Globals.Model);
+            float4 vertex = Vertices[idx];
+            
+            // Apply deformation in local space before transformation
+            vertex = DeformVertex(vertex, Globals.Time);
+            
+            tet.pos[i] = mul(vertex, Globals.Model);
             tet.pos[i] = mul(tet.pos[i], Globals.View);
         }
 
