@@ -78,7 +78,7 @@ float GetDensity(float3 p)
 {
     float d = fbm(p * 3.0 + float3(0, 0, Globals.Time * 0.5));
     float corrosion = noise(p * 4.0 - float3(0, Globals.Time * 1.0, 0));
-    d -= corrosion * 0.4;
+    d -= corrosion * 0.2;
     return saturate((d - 0.05) * 2.0);
 }
 
@@ -86,7 +86,7 @@ float GetDensityLowQ(float3 p)
 {
     float d = noise(p * 3.0 + float3(0, 0, Globals.Time * 0.5));
     float corrosion = noise(p * 4.0 - float3(0, Globals.Time * 1.0, 0));
-    d -= corrosion * 0.4;
+    d -= corrosion * 0.2;
     return saturate((d - 0.05) * 2.0);
 }
 
@@ -248,8 +248,8 @@ float4 main(PSIn input) : SV_Target
         float cloudTransmittance = 1.0;
         float3 accumulatedLight = 0;
 
-        float3 lightPos = float3(0.0, -15.0, 0.0);
-        float3 lightColor = float3(1.0, 0.9, 0.7) * 0.05;
+        float3 lightPos = float3(0.0, -35.0, 0.0);
+        float3 lightColor = float3(1.0, 0.9, 0.7) * 0.24;
 
         float2 ndc = uv * 2.0 - 1.0;
         ndc.y = -ndc.y;
