@@ -101,9 +101,14 @@ private:
     SceneConstantBuffer m_constantBufferData;
     UINT8* m_cbvDataBegin;
 
-    float m_cameraAngle;
-    float m_cameraElevation;
-    float m_cameraDistance;
+    // Free-fly camera
+    float m_cameraPosX;
+    float m_cameraPosY;
+    float m_cameraPosZ;
+    float m_cameraYaw;    // Left/right rotation
+    float m_cameraPitch;  // Up/down rotation
+    XMFLOAT3 m_viewForward;  // Actual view forward direction
+    XMFLOAT3 m_viewRight;    // Actual view right direction
     bool m_randomizeDrawOrder;
 
     // Synchronization objects

@@ -59,9 +59,13 @@ IntervalShadingTetrahedron::IntervalShadingTetrahedron(UINT width, UINT height, 
     m_srvDescriptorSize(0),
     m_rtvDescriptorSize(0),
     m_cbvDataBegin(nullptr),
-    m_cameraAngle(1.222f),         // 70 degrees rotation around left axis (Y-axis)
-    m_cameraElevation(-0.473f),    // 0.40f - 0.873f (-50 degrees in radians ≈ 0.873)
-    m_cameraDistance(35.0f), // Much further back to see the scene
+    m_cameraPosX(0.0f),
+    m_cameraPosY(50.0f),           // Start at cloud level
+    m_cameraPosZ(-50.0f),          // Start back from clouds
+    m_cameraYaw(0.0f),             // Looking forward (+Z)
+    m_cameraPitch(0.0f),           // Level view
+    m_viewForward(0.0f, 0.0f, 1.0f),
+    m_viewRight(1.0f, 0.0f, 0.0f),
     m_randomizeDrawOrder(false)
 {
     ZeroMemory(m_fenceValues, sizeof(m_fenceValues));
@@ -213,11 +217,12 @@ void IntervalShadingTetrahedron::LoadPipeline()
 
 void IntervalShadingTetrahedron::LoadAssets()
 {
-    // Try to load scene.json first
-    std::wstring scenePath = L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\scene.json";
-    // Also try relative paths
+    // Try to load scene.json - try multiple relative paths
+    std::wstring scenePath = L"..\\Assets\\IntervalShading\\scene.json";  // from bin/ folder
     if (!std::filesystem::exists(scenePath)) scenePath = L"..\\..\\Assets\\IntervalShading\\scene.json";
+    if (!std::filesystem::exists(scenePath)) scenePath = L"..\\..\\..\\Assets\\IntervalShading\\scene.json";
     if (!std::filesystem::exists(scenePath)) scenePath = L"..\\..\\..\\..\\Assets\\IntervalShading\\scene.json";
+    if (!std::filesystem::exists(scenePath)) scenePath = L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\scene.json";
     
     bool sceneLoaded = false;
     if (std::filesystem::exists(scenePath))
@@ -508,44 +513,57 @@ void IntervalShadingTetrahedron::OnDestroy()
 
 void IntervalShadingTetrahedron::OnKeyDown(UINT8 key)
 {
-    const float rotationSpeed = 0.1f;
-    const float zoomSpeed = 0.5f;
-    
+    const float moveSpeed = 3.0f;
+    const float rotSpeed = 0.1f;
+
     switch (key)
     {
-    case '1': m_constantBufferData.DebugMode = 0; break; // front
-    case '2': m_constantBufferData.DebugMode = 1; break; // back
-    case '3': m_constantBufferData.DebugMode = 2; break; // length
-    case '4': m_constantBufferData.DebugMode = 3; break; // tau
-    case '5': m_constantBufferData.DebugMode = 4; break; // T
-    case '6': m_constantBufferData.DebugMode = 5; break; // fog/crystal
-    case '7': m_constantBufferData.DebugMode = 6; break; // Wireframe
-    case 'R': case 'r':
-        ShuffleTets();
+    case '1': m_constantBufferData.DebugMode = 0; break;
+    case '2': m_constantBufferData.DebugMode = 1; break;
+    case '3': m_constantBufferData.DebugMode = 2; break;
+    case '4': m_constantBufferData.DebugMode = 3; break;
+    case '5': m_constantBufferData.DebugMode = 4; break;
+    case '6': m_constantBufferData.DebugMode = 5; break;
+    case '7': m_constantBufferData.DebugMode = 6; break;
+    case 'R': case 'r': ShuffleTets(); break;
+    case 'O': case 'o': OpenMeshFile(); break;
+
+    // WASD: Move using actual view vectors from the view matrix
+    case 'W': case 'w':
+        m_cameraPosX += m_viewForward.x * moveSpeed;
+        m_cameraPosY += m_viewForward.y * moveSpeed;
+        m_cameraPosZ += m_viewForward.z * moveSpeed;
         break;
-    case 'O': case 'o':
-        OpenMeshFile();
+    case 'S': case 's':
+        m_cameraPosX -= m_viewForward.x * moveSpeed;
+        m_cameraPosY -= m_viewForward.y * moveSpeed;
+        m_cameraPosZ -= m_viewForward.z * moveSpeed;
+        break;
+    case 'A': case 'a':
+        m_cameraPosX -= m_viewRight.x * moveSpeed;
+        m_cameraPosY -= m_viewRight.y * moveSpeed;
+        m_cameraPosZ -= m_viewRight.z * moveSpeed;
+        break;
+    case 'D': case 'd':
+        m_cameraPosX += m_viewRight.x * moveSpeed;
+        m_cameraPosY += m_viewRight.y * moveSpeed;
+        m_cameraPosZ += m_viewRight.z * moveSpeed;
         break;
 
-    case VK_LEFT:  m_cameraAngle -= rotationSpeed; break;
-    case VK_RIGHT: m_cameraAngle += rotationSpeed; break;
-    case VK_UP:    m_cameraElevation += rotationSpeed; break;
-    case VK_DOWN:  m_cameraElevation -= rotationSpeed; break;
-    case 'W': case 'w': m_cameraDistance = (std::max)(0.5f, m_cameraDistance - zoomSpeed); break;
-    case 'S': case 's': m_cameraDistance = (std::min)(15.0f, m_cameraDistance + zoomSpeed); break;
+    // Arrow keys: Look around
+    case VK_LEFT:  m_cameraYaw += rotSpeed; break;
+    case VK_RIGHT: m_cameraYaw -= rotSpeed; break;
+    case VK_UP:    m_cameraPitch += rotSpeed; break;
+    case VK_DOWN:  m_cameraPitch -= rotSpeed; break;
     }
-    
-    // Keep angle in valid range
-    if (m_cameraAngle > XM_2PI)
-        m_cameraAngle -= XM_2PI;
-    if (m_cameraAngle < 0)
-        m_cameraAngle += XM_2PI;
-    
-    // Keep elevation in valid range (0 to 2PI) for seamless rotation
-    if (m_cameraElevation > XM_2PI)
-        m_cameraElevation -= XM_2PI;
-    if (m_cameraElevation < 0)
-        m_cameraElevation += XM_2PI;
+
+    // Clamp pitch
+    m_cameraPitch = (std::max)(-1.5f, (std::min)(1.5f, m_cameraPitch));
+
+    // Wrap yaw
+    const float TWO_PI = 6.283185f;
+    while (m_cameraYaw < 0.0f) m_cameraYaw += TWO_PI;
+    while (m_cameraYaw >= TWO_PI) m_cameraYaw -= TWO_PI;
 }
 
 // Helper to get time
@@ -1085,25 +1103,32 @@ void IntervalShadingTetrahedron::UploadBuffer(ID3D12Resource** destination, cons
 
 void IntervalShadingTetrahedron::UpdateConstants()
 {
-    float y = m_cameraDistance * sinf(m_cameraElevation);
-    float r = m_cameraDistance * cosf(m_cameraElevation);
-    float x = r * cosf(m_cameraAngle);
-    float z = r * sinf(m_cameraAngle);
+    // Free-fly camera: position + yaw/pitch rotation
+    XMVECTOR cameraPos = XMVectorSet(m_cameraPosX, m_cameraPosY, m_cameraPosZ, 1.0f);
 
-    XMVECTOR cameraPos = XMVectorSet(x, y, z, 1.0f);
-    XMVECTOR target = XMVectorSet(0.0f, -2.0f, 0.0f, 1.0f);  // Moved down along Y axis
-    XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    // Calculate forward direction from yaw (horizontal) and pitch (vertical)
+    float cosPitch = cosf(m_cameraPitch);
+    float forwardX = sinf(m_cameraYaw) * cosPitch;
+    float forwardY = sinf(m_cameraPitch);
+    float forwardZ = cosf(m_cameraYaw) * cosPitch;
 
-    if (cosf(m_cameraElevation) < 0.0f)
-    {
-        up = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
-    }
+    XMVECTOR forward = XMVectorSet(forwardX, forwardY, forwardZ, 0.0f);
+    XMVECTOR target = XMVectorAdd(cameraPos, forward);
+    XMVECTOR up = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);  // Flipped to match scene orientation
 
     XMMATRIX model = XMMatrixIdentity();
     XMMATRIX view = XMMatrixLookAtLH(cameraPos, target, up);
-    XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV4, m_aspectRatio, kNearPlane, 100.0f);
+    XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV4, m_aspectRatio, kNearPlane, 500.0f);
     XMMATRIX viewProj = view * proj;
     XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
+
+    // Extract camera axes from inverse view matrix for movement
+    XMMATRIX invView = XMMatrixInverse(nullptr, view);
+    XMFLOAT4X4 invViewF;
+    XMStoreFloat4x4(&invViewF, invView);
+    // Row 0 = Right, Row 1 = Up, Row 2 = Forward (in world space)
+    m_viewRight = XMFLOAT3(invViewF._11, invViewF._12, invViewF._13);
+    m_viewForward = XMFLOAT3(invViewF._31, invViewF._32, invViewF._33);
 
     m_constantBufferData.Model = m_modelMatrix;
     XMStoreFloat4x4(&m_constantBufferData.View, XMMatrixTranspose(view));
