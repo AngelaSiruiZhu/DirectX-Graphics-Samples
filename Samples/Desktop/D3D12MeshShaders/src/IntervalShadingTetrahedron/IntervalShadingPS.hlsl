@@ -17,6 +17,11 @@ struct Constants
     uint RandomizeOrder;
     float3 CameraPos;
     float Time;
+    float3 LightDir;
+    float WaveSpeedScale;
+    uint TetOffset;
+    float WaveAmplitudeScale;
+    float2 Padding;
 };
 
 cbuffer SceneConstants : register(b0)

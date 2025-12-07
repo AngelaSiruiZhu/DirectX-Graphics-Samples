@@ -18,7 +18,10 @@ struct Constants
     float3 CameraPos;
     float Time;
     float3 LightDir;
+    float WaveSpeedScale;
     uint TetOffset;
+    float WaveAmplitudeScale;
+    float2 Padding;
 };
 
 cbuffer SceneConstants : register(b0)
@@ -320,8 +323,8 @@ float4 DeformVertex(float4 worldPos, float time)
     // Add wave deformation on top
     float waveFreq1 = 2.5f;
     float waveFreq2 = 1.8f;
-    float waveAmplitude = 0.12f;
-    float waveSpeed = 0.4f;
+    float waveAmplitude = 0.12f * Globals.WaveAmplitudeScale;
+    float waveSpeed = 0.4f * Globals.WaveSpeedScale;
     
     float wave1 = sin(worldPos.x * waveFreq1 + time * waveSpeed) * waveAmplitude;
     float wave2 = sin(worldPos.y * waveFreq2 - time * waveSpeed * 0.7f) * waveAmplitude * 0.6f;
