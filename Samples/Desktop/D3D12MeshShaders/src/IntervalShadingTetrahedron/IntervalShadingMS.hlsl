@@ -259,30 +259,64 @@ bool LineIntersection(float2 L1A, float2 L1B, float2 L2A, float2 L2B, out float2
     return false;
 }
 
-// Deformation function - applies wave-like distortion to vertex positions
+// Deformation function - morphs mesh between different shapes
 float4 DeformVertex(float4 worldPos, float time)
 {
     float4 deformed = worldPos;
     
-    // Wave parameters
-    float waveFreq1 = 2.5f;    // frequency of primary wave
-    float waveFreq2 = 1.8f;    // frequency of secondary wave
-    float waveAmplitude = 0.15f; // amplitude of deformation
-    float speed = 0.4f;        // animation speed
+    // Animation parameters
+    float speed = 0.25f;  // slower morph speed
+    float morphPhase = sin(time * speed * 0.5f * 0.25f) * 0.5f + 0.5f; // oscillates 0 to 1
     
-    // Create multiple wave patterns in different directions
-    float wave1 = sin(worldPos.x * waveFreq1 + time * speed) * waveAmplitude;
-    float wave2 = sin(worldPos.y * waveFreq2 - time * speed * 0.7f) * waveAmplitude * 0.6f;
-    float wave3 = sin(worldPos.z * waveFreq1 * 0.8f + time * speed * 0.5f) * waveAmplitude * 0.4f;
+    // Shape 1: Tetrahedron base (near 0)
+    // Shape 2: Elongated/stretched form (middle)
+    // Shape 3: Compressed sphere-like form (near 1)
     
-    // Apply deformation to all axes with decreasing influence
+    float dist = length(worldPos.xyz);
+    float3 normal = normalize(worldPos.xyz);
+    
+    // Create morphing between shapes
+    if (morphPhase < 0.33f)
+    {
+        // Morphing from sphere to elongated
+        float localPhase = morphPhase / 0.33f;
+        float stretch = 1.0f + localPhase * 1.2f; // stretch along Y
+        deformed.y *= stretch;
+        deformed.x *= (1.0f - localPhase * 0.3f);
+        deformed.z *= (1.0f - localPhase * 0.3f);
+    }
+    else if (morphPhase < 0.66f)
+    {
+        // Morphing from elongated to compressed
+        float localPhase = (morphPhase - 0.33f) / 0.33f;
+        float compress = 1.0f - localPhase * 0.5f; // compress height
+        deformed.y *= compress;
+        deformed.x *= (1.0f + localPhase * 0.4f);
+        deformed.z *= (1.0f + localPhase * 0.4f);
+    }
+    else
+    {
+        // Morphing back from compressed to sphere
+        float localPhase = (morphPhase - 0.66f) / 0.34f;
+        float compress = 0.5f + localPhase * 0.5f;
+        deformed.y *= compress;
+        deformed.x *= (1.4f - localPhase * 0.4f);
+        deformed.z *= (1.4f - localPhase * 0.4f);
+    }
+    
+    // Add wave deformation on top
+    float waveFreq1 = 2.5f;
+    float waveFreq2 = 1.8f;
+    float waveAmplitude = 0.12f;
+    float waveSpeed = 0.4f;
+    
+    float wave1 = sin(worldPos.x * waveFreq1 + time * waveSpeed) * waveAmplitude;
+    float wave2 = sin(worldPos.y * waveFreq2 - time * waveSpeed * 0.7f) * waveAmplitude * 0.6f;
+    float wave3 = sin(worldPos.z * waveFreq1 * 0.8f + time * waveSpeed * 0.5f) * waveAmplitude * 0.4f;
+    
     deformed.x += wave2 + wave3 * 0.5f;
     deformed.y += wave1 * 0.7f;
     deformed.z += wave3 + wave1 * 0.3f;
-    
-    // Add scale/breathing effect
-    float scale = 1.0f + sin(time * speed * 0.5f) * 0.08f;
-    deformed.xyz *= scale;
     
     return deformed;
 }
