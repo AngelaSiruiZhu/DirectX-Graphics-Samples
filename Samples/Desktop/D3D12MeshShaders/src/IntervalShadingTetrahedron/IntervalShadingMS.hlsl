@@ -265,43 +265,50 @@ float4 DeformVertex(float4 worldPos, float time)
     float4 deformed = worldPos;
     
     // Animation parameters
-    float speed = 0.25f;  // slower morph speed
-    float morphPhase = sin(time * speed * 0.5f * 0.25f) * 0.5f + 0.5f; // oscillates 0 to 1
+    float speed = 0.1f;  // slower
     
-    // Shape 1: Tetrahedron base (near 0)
-    // Shape 2: Elongated/stretched form (middle)
-    // Shape 3: Compressed sphere-like form (near 1)
+    float3 pos = worldPos.xyz;
+    float dist = length(pos);
+    float3 normal = normalize(pos);
     
-    float dist = length(worldPos.xyz);
-    float3 normal = normalize(worldPos.xyz);
+    // Julia set-like fractal growth - with oscillation
+    float growthTime = time * speed;
     
-    // Create morphing between shapes
-    if (morphPhase < 0.33f)
+    // Create fractal pattern using Mandelbrot-like iteration
+    float3 z = pos * 2.0f;
+    float julia = 0.0f;
+    float juliaStrength = 0.0f;
+    
+    // Iterate to create fractal structure
+    for (int i = 0; i < 5; i++)
     {
-        // Morphing from sphere to elongated
-        float localPhase = morphPhase / 0.33f;
-        float stretch = 1.0f + localPhase * 1.2f; // stretch along Y
-        deformed.y *= stretch;
-        deformed.x *= (1.0f - localPhase * 0.3f);
-        deformed.z *= (1.0f - localPhase * 0.3f);
+        z = abs(z) - float3(0.7f, 0.7f, 0.7f);
+        float len = length(z);
+        
+        julia = len;
+        juliaStrength += 1.0f / (0.1f + len * len);
+        
+        if (len > 3.0f) break;
     }
-    else if (morphPhase < 0.66f)
+    
+    // Normalize and threshold to get distinct regions
+    juliaStrength = fmod(juliaStrength * 0.5f, 1.0f);
+    
+    // Create CLEAR selection: only grow in bright Julia regions
+    float shouldGrow = step(0.6f, juliaStrength) * step(juliaStrength, 0.95f);
+    
+    // Oscillating growth - goes back and forth
+    if (shouldGrow > 0.5f)
     {
-        // Morphing from elongated to compressed
-        float localPhase = (morphPhase - 0.33f) / 0.33f;
-        float compress = 1.0f - localPhase * 0.5f; // compress height
-        deformed.y *= compress;
-        deformed.x *= (1.0f + localPhase * 0.4f);
-        deformed.z *= (1.0f + localPhase * 0.4f);
-    }
-    else
-    {
-        // Morphing back from compressed to sphere
-        float localPhase = (morphPhase - 0.66f) / 0.34f;
-        float compress = 0.5f + localPhase * 0.5f;
-        deformed.y *= compress;
-        deformed.x *= (1.4f - localPhase * 0.4f);
-        deformed.z *= (1.4f - localPhase * 0.4f);
+        // Sine wave oscillation - grows and shrinks smoothly
+        float oscillation = sin(growthTime * 2.0f * 3.14159f);
+        
+        // Smaller, subtler bulges
+        float bulge = sin(julia * 10.0f) * 0.35f; // much smaller amplitude
+        bulge *= max(0.0f, oscillation); // only positive part of sine wave
+        
+        // Gentle growth application
+        deformed.xyz += normal * bulge * 0.4f;
     }
     
     // Add wave deformation on top
