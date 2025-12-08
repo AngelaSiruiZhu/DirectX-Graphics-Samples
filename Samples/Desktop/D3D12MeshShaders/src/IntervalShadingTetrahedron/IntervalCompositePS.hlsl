@@ -159,7 +159,7 @@ float GetDensity(float3 p)
     float d = lerp(base, detail, 0.35f);
     d = d + micro * 0.12f;
     d = smoothstep(0.30f, 0.82f, d);
-    return saturate(pow(d, 0.90f) * 0.74f);
+    return saturate(pow(d, 0.95f) * 0.94f);
 }
 
 float GetDensityLowQ(float3 p)
@@ -169,7 +169,7 @@ float GetDensityLowQ(float3 p)
     float micro = fbm(p * 3.0 + float3(0.0, Globals.Time * 0.06, 0.0));
     float d = lerp(base, detail, 0.3f) + micro * 0.1f;
     d = smoothstep(0.30f, 0.8f, d);
-    return saturate(pow(d, 0.90f) * 0.7f);
+    return saturate(pow(d, 0.95f) * 0.88f);
 }
 
 float3 DepthToGray(float d)
@@ -348,7 +348,7 @@ float4 main(PSIn input) : SV_Target
             }
         }
 
-        float hullPadding = edgeBlend * 0.55f;
+        float hullPadding = edgeBlend * 0.85f;  // Increased for smoother silhouette edges
         front = max(front - hullPadding, 0.0f);
         back += hullPadding;
 
@@ -376,7 +376,7 @@ float4 main(PSIn input) : SV_Target
             float dist = front;
             float baseStep = 0.018f;
             float stepSize = lerp(baseStep * 1.15f, baseStep * 0.9f, coverageWeight);
-            float fadeWidthBase = lerp(0.55f, 0.95f, coverageWeight); // soften edges
+            float fadeWidthBase = lerp(0.85f, 1.4f, coverageWeight); // Wider fade for smoother edges
             float densityScale = lerp(0.55f, 1.45f, coverageWeight);  // puffier core + more mass
 
             for (int i = 0; i < 64; i++)
@@ -388,7 +388,7 @@ float4 main(PSIn input) : SV_Target
                 float densityBase = GetDensity(p * Globals.Density);
                 float fadeFront = saturate((dist - front) / fadeWidthBase);
                 float fadeBack  = saturate((back - dist) / fadeWidthBase);
-                float edgeFade = pow(fadeFront * fadeBack, lerp(0.42f, 0.9f, coverageWeight));
+                float edgeFade = pow(fadeFront * fadeBack, lerp(0.3f, 0.65f, coverageWeight));  // Lower power for smoother falloff
                 float density = saturate(densityBase * 2.0f) * edgeFade * densityScale;
 
                 if (density > 0.0001f)
