@@ -275,7 +275,8 @@ float4 DeformVertex(float4 worldPos, float time)
     float3 normal = normalize(pos);
     
     // Only apply Julia set to TOP region of mesh (positive Y)
-    float regionMask = smoothstep(-1.0f, 0.5f, pos.y); // only top half
+    // Use wider smoothstep for smoother transition at region boundary
+    float regionMask = smoothstep(-1.5f, 1.0f, pos.y); // wider, smoother transition
     
     // Only proceed if we're in the selected region
     if (regionMask > 0.01f)
@@ -302,21 +303,21 @@ float4 DeformVertex(float4 worldPos, float time)
         // Normalize and threshold to get distinct regions
         juliaStrength = fmod(juliaStrength * 0.5f, 1.0f);
         
-        // Create CLEAR selection: only grow in bright Julia regions
-        float shouldGrow = step(0.6f, juliaStrength) * step(juliaStrength, 0.95f);
+        // Use smoothstep instead of step for smoother edges on Julia boundaries
+        float shouldGrow = smoothstep(0.5f, 0.7f, juliaStrength) * smoothstep(1.0f, 0.85f, juliaStrength);
         
-        // Oscillating growth - goes back and forth
-        if (shouldGrow > 0.5f)
+        // Apply smooth growth
+        if (shouldGrow > 0.01f)
         {
             // Sine wave oscillation - grows and shrinks smoothly
             float oscillation = sin(growthTime * 2.0f * 3.14159f);
             
-            // Smaller, subtler bulges
-            float bulge = sin(julia * 10.0f) * 0.35f;
+            // Smoother bulge function
+            float bulge = sin(julia * 8.0f) * 0.3f;  // reduced frequency for smoother shapes
             bulge *= max(0.0f, oscillation);
             
-            // Apply growth only to selected region
-            deformed.xyz += normal * bulge * 0.4f * regionMask;
+            // Apply smooth growth with gradual falloff
+            deformed.xyz += normal * bulge * 0.35f * regionMask * shouldGrow;
         }
     }
     

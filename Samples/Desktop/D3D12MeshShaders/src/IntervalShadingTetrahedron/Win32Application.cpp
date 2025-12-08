@@ -10,6 +10,7 @@
 //*********************************************************
 
 #include "Win32Application.h"
+#include "IntervalShadingTetrahedron.h"
 
 HWND Win32Application::m_hwnd = nullptr;
 
@@ -50,6 +51,13 @@ int Win32Application::Run(DXSample* pSample, HINSTANCE hInstance, int nCmdShow)
 
     // Initialize the sample. OnInit is defined in each child-implementation of DXSample.
     pSample->OnInit();
+    
+    // Create GUI window for IntervalShadingTetrahedron
+    IntervalShadingTetrahedron* cloudSample = dynamic_cast<IntervalShadingTetrahedron*>(pSample);
+    if (cloudSample)
+    {
+        cloudSample->CreateGUIWindow(hInstance);
+    }
 
     ShowWindow(m_hwnd, nCmdShow);
 

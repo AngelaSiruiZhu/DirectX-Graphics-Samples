@@ -14,15 +14,20 @@
 #include <stdexcept>
 #include <cfloat>
 #include <commdlg.h>
+#include <commctrl.h>
 #include <filesystem>
 #include "../../../../../MiniEngine/Model/json.hpp" 
 
 using json = nlohmann::json;
 #pragma comment(lib, "Comdlg32.lib")
+#pragma comment(lib, "Comctl32.lib")
 #undef min
 #undef max
 
 using DirectX::XMMatrixInverse;
+
+// Static instance pointer for GUI window proc
+IntervalShadingTetrahedron* IntervalShadingTetrahedron::s_instance = nullptr;
 
 namespace
 {
@@ -66,8 +71,22 @@ IntervalShadingTetrahedron::IntervalShadingTetrahedron(UINT width, UINT height, 
     m_cameraPitch(0.3f),           // Slightly up to see clouds
     m_viewForward(0.0f, 0.0f, 1.0f),
     m_viewRight(1.0f, 0.0f, 0.0f),
-    m_randomizeDrawOrder(false)
+    m_randomizeDrawOrder(false),
+    m_guiWindow(nullptr),
+    m_sliderClouds(nullptr),
+    m_sliderDrift(nullptr),
+    m_sliderDeform(nullptr),
+    m_sliderDensity(nullptr),
+    m_valueClouds(nullptr),
+    m_valueDrift(nullptr),
+    m_valueDeform(nullptr),
+    m_valueDensity(nullptr),
+    m_numCloudsVisible(25),
+    m_driftSpeed(0.27f),
+    m_deformAmount(0.48f),
+    m_cloudDensity(1.24f)
 {
+    s_instance = this;
     ZeroMemory(m_fenceValues, sizeof(m_fenceValues));
     ZeroMemory(&m_constantBufferData, sizeof(m_constantBufferData));
     m_constantBufferData.DebugMode = 5; // Default to Volumetric Cloud
@@ -332,13 +351,18 @@ void IntervalShadingTetrahedron::OnUpdate()
     float elapsedTime = std::chrono::duration<float>(currentTime - startTime).count();
     
     // Apply smooth drifting to clouds along world axes (back and forth)
+    // Use GUI drift speed parameter
+    float driftMultiplier = m_driftSpeed;
+    
     for (size_t i = 0; i < m_sceneObjects.size(); i++)
     {
         auto& obj = m_sceneObjects[i];
         
         // Vary speed and amplitude for each cloud based on index
-        float speedVariation = 0.4f + (i % 3) * 0.075f;  // Speeds: 0.4, 0.475, 0.55
-        float ampVariation = 0.0008f + (i % 3) * 0.0003f;  // Amplitudes: 0.0008, 0.0011, 0.0014
+        float speedVariation = (0.4f + (i % 3) * 0.075f) * driftMultiplier;  // Speeds scaled by GUI
+        // Amplitude now also scales with drift speed for visible movement
+        float baseAmp = 0.05f + (i % 3) * 0.02f;  // Much larger base amplitude
+        float ampVariation = baseAmp * driftMultiplier;  // Scale by GUI drift speed
         
         // Apply oscillating drift along Y-axis (back and forth motion)
         float driftY = sinf(elapsedTime * speedVariation) * ampVariation;
@@ -429,8 +453,9 @@ void IntervalShadingTetrahedron::PopulateCommandList()
         m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
         m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
         
-        // Dispatch per object
-        for (size_t i = 0; i < m_sceneObjects.size(); ++i)
+        // Dispatch per object - respect GUI number of clouds setting
+        int cloudsToRender = (std::min)(m_numCloudsVisible, (int)m_sceneObjects.size());
+        for (size_t i = 0; i < (size_t)cloudsToRender; ++i)
         {
             if (i >= 64) break;
             UINT64 cbOffset = (m_frameIndex * 64 + i) * m_cbStride;
@@ -488,7 +513,8 @@ void IntervalShadingTetrahedron::PopulateCommandList()
             
             m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
 
-            for (size_t i = 0; i < m_sceneObjects.size(); ++i)
+            int cloudsToRender = (std::min)(m_numCloudsVisible, (int)m_sceneObjects.size());
+            for (size_t i = 0; i < (size_t)cloudsToRender; ++i)
             {
                 if (i >= 64) break;
                 UINT64 cbOffset = (m_frameIndex * 64 + i) * m_cbStride;
@@ -531,6 +557,16 @@ void IntervalShadingTetrahedron::OnKeyDown(UINT8 key)
     case '7': m_constantBufferData.DebugMode = 6; break;
     case 'R': case 'r': ShuffleTets(); break;
     case 'O': case 'o': OpenMeshFile(); break;
+    case 'G': case 'g':
+        // Toggle GUI window visibility
+        if (m_guiWindow)
+        {
+            if (IsWindowVisible(m_guiWindow))
+                ShowWindow(m_guiWindow, SW_HIDE);
+            else
+                ShowWindow(m_guiWindow, SW_SHOW);
+        }
+        break;
 
     // WASD: Move using actual view vectors from the view matrix
     case 'W': case 'w':
@@ -1162,7 +1198,7 @@ void IntervalShadingTetrahedron::UpdateConstants()
     XMStoreFloat4x4(&m_constantBufferData.ViewProj, XMMatrixTranspose(viewProj));
     XMStoreFloat4x4(&m_constantBufferData.InvViewProj, XMMatrixTranspose(invViewProj));
     m_constantBufferData.NearPlane = kNearPlane;
-    m_constantBufferData.Density = kDefaultDensity;
+    m_constantBufferData.Density = m_cloudDensity;  // Use GUI density
     // m_constantBufferData.TetCount = ... // Per object
     m_constantBufferData.RandomizeOrder = m_randomizeDrawOrder ? 1u : 0u;
     XMStoreFloat3(&m_constantBufferData.CameraPos, cameraPos);
@@ -1179,9 +1215,9 @@ void IntervalShadingTetrahedron::UpdateConstants()
         
         m_constantBufferData.Model = obj.WorldMatrix;
         m_constantBufferData.TetCount = obj.IndexCount / 4;
-        m_constantBufferData.WaveSpeedScale = obj.WaveSpeedScale;
+        m_constantBufferData.WaveSpeedScale = obj.WaveSpeedScale * m_deformAmount;  // Scale by GUI deformation
         m_constantBufferData.TetOffset = static_cast<uint32_t>(obj.MeshIndex); // Index buffer offset
-        m_constantBufferData.WaveAmplitudeScale = obj.WaveAmplitudeScale;
+        m_constantBufferData.WaveAmplitudeScale = obj.WaveAmplitudeScale * m_deformAmount;  // Scale by GUI deformation
         
         UINT64 offset = (m_frameIndex * 64 + objIndex) * m_cbStride;
         std::memcpy(m_cbvDataBegin + offset, &m_constantBufferData, sizeof(m_constantBufferData));
@@ -1308,4 +1344,181 @@ void IntervalShadingTetrahedron::OpenMeshFile()
     // But if it was sluggish, forcing it shown ensures it's available.
     // We'll balance the ShowCursor(TRUE) with a FALSE.
     ShowCursor(FALSE);
+}
+
+// GUI Window Procedure
+LRESULT CALLBACK IntervalShadingTetrahedron::GUIWindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    if (!s_instance) return DefWindowProc(hWnd, message, wParam, lParam);
+    
+    switch (message)
+    {
+    case WM_HSCROLL:
+    {
+        HWND slider = (HWND)lParam;
+        int pos = (int)SendMessage(slider, TBM_GETPOS, 0, 0);
+        
+        if (slider == s_instance->m_sliderClouds)
+        {
+            s_instance->m_numCloudsVisible = pos;
+            wchar_t buf[32];
+            swprintf_s(buf, L"%d", pos);
+            SetWindowText(s_instance->m_valueClouds, buf);
+        }
+        else if (slider == s_instance->m_sliderDrift)
+        {
+            s_instance->m_driftSpeed = pos / 100.0f;
+            wchar_t buf[32];
+            swprintf_s(buf, L"%.2f", s_instance->m_driftSpeed);
+            SetWindowText(s_instance->m_valueDrift, buf);
+        }
+        else if (slider == s_instance->m_sliderDeform)
+        {
+            s_instance->m_deformAmount = pos / 100.0f;
+            wchar_t buf[32];
+            swprintf_s(buf, L"%.2f", s_instance->m_deformAmount);
+            SetWindowText(s_instance->m_valueDeform, buf);
+        }
+        else if (slider == s_instance->m_sliderDensity)
+        {
+            s_instance->m_cloudDensity = pos / 100.0f;
+            wchar_t buf[32];
+            swprintf_s(buf, L"%.2f", s_instance->m_cloudDensity);
+            SetWindowText(s_instance->m_valueDensity, buf);
+        }
+        return 0;
+    }
+    case WM_CLOSE:
+        // Don't destroy, just hide
+        ShowWindow(hWnd, SW_HIDE);
+        return 0;
+    case WM_DESTROY:
+        return 0;
+    }
+    return DefWindowProc(hWnd, message, wParam, lParam);
+}
+
+void IntervalShadingTetrahedron::CreateGUIWindow(HINSTANCE hInstance)
+{
+    // Initialize common controls
+    INITCOMMONCONTROLSEX icex;
+    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
+    icex.dwICC = ICC_BAR_CLASSES;
+    InitCommonControlsEx(&icex);
+    
+    // Register GUI window class
+    WNDCLASSEX wcGUI = { 0 };
+    wcGUI.cbSize = sizeof(WNDCLASSEX);
+    wcGUI.style = CS_HREDRAW | CS_VREDRAW;
+    wcGUI.lpfnWndProc = GUIWindowProc;
+    wcGUI.hInstance = hInstance;
+    wcGUI.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wcGUI.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wcGUI.lpszClassName = L"CloudGUIClass";
+    RegisterClassEx(&wcGUI);
+    
+    // Create GUI window
+    int guiWidth = 320;
+    int guiHeight = 300;
+    
+    m_guiWindow = CreateWindowEx(
+        WS_EX_TOPMOST,
+        L"CloudGUIClass",
+        L"Cloud Controls",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+        CW_USEDEFAULT, CW_USEDEFAULT,
+        guiWidth, guiHeight,
+        nullptr,
+        nullptr,
+        hInstance,
+        nullptr);
+    
+    int yPos = 15;
+    int labelWidth = 100;
+    int sliderWidth = 140;
+    int valueWidth = 50;
+    int height = 25;
+    int spacing = 45;
+    
+    // Number of Clouds
+    CreateWindow(L"STATIC", L"Clouds:", WS_CHILD | WS_VISIBLE,
+        10, yPos, labelWidth, height, m_guiWindow, (HMENU)IDC_LABEL_CLOUDS, hInstance, nullptr);
+    m_sliderClouds = CreateWindow(TRACKBAR_CLASS, L"",
+        WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_AUTOTICKS,
+        labelWidth + 15, yPos, sliderWidth, height, m_guiWindow, (HMENU)IDC_SLIDER_CLOUDS, hInstance, nullptr);
+    SendMessage(m_sliderClouds, TBM_SETRANGE, TRUE, MAKELONG(1, 25));
+    SendMessage(m_sliderClouds, TBM_SETPOS, TRUE, m_numCloudsVisible);
+    m_valueClouds = CreateWindow(L"STATIC", L"25", WS_CHILD | WS_VISIBLE,
+        labelWidth + sliderWidth + 20, yPos, valueWidth, height, m_guiWindow, (HMENU)IDC_VALUE_CLOUDS, hInstance, nullptr);
+    
+    yPos += spacing;
+    
+    // Drift Speed
+    CreateWindow(L"STATIC", L"Drift Speed:", WS_CHILD | WS_VISIBLE,
+        10, yPos, labelWidth, height, m_guiWindow, (HMENU)IDC_LABEL_DRIFT, hInstance, nullptr);
+    m_sliderDrift = CreateWindow(TRACKBAR_CLASS, L"",
+        WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_AUTOTICKS,
+        labelWidth + 15, yPos, sliderWidth, height, m_guiWindow, (HMENU)IDC_SLIDER_DRIFT, hInstance, nullptr);
+    SendMessage(m_sliderDrift, TBM_SETRANGE, TRUE, MAKELONG(0, 1000));
+    SendMessage(m_sliderDrift, TBM_SETPOS, TRUE, (int)(m_driftSpeed * 100));
+    m_valueDrift = CreateWindow(L"STATIC", L"0.27", WS_CHILD | WS_VISIBLE,
+        labelWidth + sliderWidth + 20, yPos, valueWidth, height, m_guiWindow, (HMENU)IDC_VALUE_DRIFT, hInstance, nullptr);
+    
+    yPos += spacing;
+    
+    // Deformation Amount
+    CreateWindow(L"STATIC", L"Deformation:", WS_CHILD | WS_VISIBLE,
+        10, yPos, labelWidth, height, m_guiWindow, (HMENU)IDC_LABEL_DEFORM, hInstance, nullptr);
+    m_sliderDeform = CreateWindow(TRACKBAR_CLASS, L"",
+        WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_AUTOTICKS,
+        labelWidth + 15, yPos, sliderWidth, height, m_guiWindow, (HMENU)IDC_SLIDER_DEFORM, hInstance, nullptr);
+    SendMessage(m_sliderDeform, TBM_SETRANGE, TRUE, MAKELONG(0, 300));
+    SendMessage(m_sliderDeform, TBM_SETPOS, TRUE, (int)(m_deformAmount * 100));
+    m_valueDeform = CreateWindow(L"STATIC", L"0.48", WS_CHILD | WS_VISIBLE,
+        labelWidth + sliderWidth + 20, yPos, valueWidth, height, m_guiWindow, (HMENU)IDC_VALUE_DEFORM, hInstance, nullptr);
+    
+    yPos += spacing;
+    
+    // Cloud Density
+    CreateWindow(L"STATIC", L"Density:", WS_CHILD | WS_VISIBLE,
+        10, yPos, labelWidth, height, m_guiWindow, (HMENU)IDC_LABEL_DENSITY, hInstance, nullptr);
+    m_sliderDensity = CreateWindow(TRACKBAR_CLASS, L"",
+        WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_AUTOTICKS,
+        labelWidth + 15, yPos, sliderWidth, height, m_guiWindow, (HMENU)IDC_SLIDER_DENSITY, hInstance, nullptr);
+    SendMessage(m_sliderDensity, TBM_SETRANGE, TRUE, MAKELONG(10, 200));
+    SendMessage(m_sliderDensity, TBM_SETPOS, TRUE, (int)(m_cloudDensity * 100));
+    m_valueDensity = CreateWindow(L"STATIC", L"1.24", WS_CHILD | WS_VISIBLE,
+        labelWidth + sliderWidth + 20, yPos, valueWidth, height, m_guiWindow, (HMENU)IDC_VALUE_DENSITY, hInstance, nullptr);
+    
+    yPos += spacing + 10;
+    
+    // Instructions
+    CreateWindow(L"STATIC", L"Press 'G' to toggle this window", WS_CHILD | WS_VISIBLE | SS_CENTER,
+        10, yPos, guiWidth - 40, height, m_guiWindow, nullptr, hInstance, nullptr);
+    
+    ShowWindow(m_guiWindow, SW_SHOW);
+    UpdateWindow(m_guiWindow);
+}
+
+void IntervalShadingTetrahedron::UpdateGUIValues()
+{
+    if (!m_guiWindow) return;
+    
+    wchar_t buf[32];
+    
+    swprintf_s(buf, L"%d", m_numCloudsVisible);
+    SetWindowText(m_valueClouds, buf);
+    SendMessage(m_sliderClouds, TBM_SETPOS, TRUE, m_numCloudsVisible);
+    
+    swprintf_s(buf, L"%.2f", m_driftSpeed);
+    SetWindowText(m_valueDrift, buf);
+    SendMessage(m_sliderDrift, TBM_SETPOS, TRUE, (int)(m_driftSpeed * 100));
+    
+    swprintf_s(buf, L"%.2f", m_deformAmount);
+    SetWindowText(m_valueDeform, buf);
+    SendMessage(m_sliderDeform, TBM_SETPOS, TRUE, (int)(m_deformAmount * 100));
+    
+    swprintf_s(buf, L"%.2f", m_cloudDensity);
+    SetWindowText(m_valueDensity, buf);
+    SendMessage(m_sliderDensity, TBM_SETPOS, TRUE, (int)(m_cloudDensity * 100));
 }
