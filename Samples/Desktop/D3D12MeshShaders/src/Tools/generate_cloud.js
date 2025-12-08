@@ -673,10 +673,10 @@ function getDensity(x, y, z) {
                 }
             }
 
-            // Noise displacement for organic bumps
-            let noiseVal = fbm(dx * 5.0 + CONFIG.seed * 0.1, dy * 5.0, dz * 5.0);
-            let noiseVal2 = fbm(dx * 10.0, dy * 10.0, dz * 10.0);
-            let noiseDisp = (noiseVal * 0.3 + noiseVal2 * 0.1) * maxDist;
+            // Noise displacement for organic bumps (reduced for smoother edges)
+            let noiseVal = fbm(dx * 2.5 + CONFIG.seed * 0.1, dy * 2.5, dz * 2.5);
+            let noiseVal2 = fbm(dx * 5.0, dy * 5.0, dz * 5.0);
+            let noiseDisp = (noiseVal * 0.15 + noiseVal2 * 0.05) * maxDist;
 
             // Flatten bottom slightly
             let bottomScale = dy < -0.6 ? (0.6 + (dy + 0.6) * 1.0) : 1.0;
