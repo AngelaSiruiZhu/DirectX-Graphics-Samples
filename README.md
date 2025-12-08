@@ -16,16 +16,31 @@ Based on the paper: *Interval Shading: using Mesh Shaders to generate shading in
 ---
 
 ## Overview
-This milestone delivers a complete reimplementation of the **Interval Shading** technique using **DirectX 12 Mesh Shaders**, generating order-independent per-pixel depth intervals from a tetrahedral mesh for volume rendering.
 
-The system is extended into **IntervalCloud**, which supports:
+Order-independent volumetric renderer built on DX12 mesh shaders that generate per-pixel shading intervals from tetra meshes, then composite soft volumetric clouds with adjustable density, lighting, and screen-space god rays in real time.  
+Includes GUI controls, procedural terrain backdrop, and tunable styling parameters to shift between realistic and stylized looks.
 
-- Real-time volumetric cloud rendering  
-- Procedural noise-based density fields  
-- Physically-based lighting and scattering  
-- Interactive volumetric deformation  
-- A meshlet-inspired acceleration structure for high-parallel processing
 
+
+### Feature Descriptions
+
+#### **Paper reimplementation (tetra mesh shading)**
+Mesh shader loads/clips tetrahedral volume, emits proxy triangles with explicit NDC, and uses MIN/MAX/ADD blending to capture front/back depth and optical depth per pixel without sorting.
+
+#### **Cloud generation**
+Ray-marched FBM-based density (base/detail/micro noise), edge fading, and density scaling for soft, puffy clouds; parameters let you thicken, soften, or stylize the look.
+
+#### **Terrain generation**
+Procedural ground/sky background with FBM-based heightfield, simple lighting, fog blend, and color layers (grass/dirt/rock/snow) for depth and context.
+
+#### **Deformation**
+Time-varying noise drift and density modulation subtly evolve cloud shapes; light-position tweaks and interval padding allow different silhouettes and softness.
+
+#### **God ray light pass**
+Screen-space radial sampling toward the light with jitter and decay, modulated by interval coverage and density to produce soft volumetric shafts.
+
+#### **GUI control**
+Runtime debug/render mode toggles (depth/interval/optical visualizers, transmittance, fog/crystal), camera controls, density/lighting/god-ray parameters to explore styles and validate order independence.
 
 
 
