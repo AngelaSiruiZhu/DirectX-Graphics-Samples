@@ -12,6 +12,9 @@ $projectRoot = "$PSScriptRoot"
 $solutionPath = Resolve-Path "$projectRoot\..\D3D12MeshShaders.sln"
 $outputDir = "$projectRoot\bin\"
 
+# Touch all shader files to force recompilation
+Get-ChildItem "$projectRoot\*.hlsl" | ForEach-Object { $_.LastWriteTime = Get-Date }
+
 # Build
 & $msbuild $solutionPath /t:IntervalShadingTetrahedron /p:Configuration=Debug /p:Platform=x64 /p:OutDir="$outputDir" /p:TargetName="runnable" -restore
 
