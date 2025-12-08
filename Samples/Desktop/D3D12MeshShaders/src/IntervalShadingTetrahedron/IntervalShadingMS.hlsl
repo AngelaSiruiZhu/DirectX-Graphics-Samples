@@ -265,78 +265,78 @@ bool LineIntersection(float2 L1A, float2 L1B, float2 L2A, float2 L2B, out float2
 // Deformation function - morphs mesh between different shapes
 float4 DeformVertex(float4 worldPos, float time)
 {
-    // float4 deformed = worldPos;
+    float4 deformed = worldPos;
     
-    // // Animation parameters
-    // float speed = 0.1f * 0.25f;  // slow down sketch growth
+    // Animation parameters
+    float speed = 0.1f * 0.25f;
     
-    // float3 pos = worldPos.xyz;
-    // float dist = length(pos);
-    // float3 normal = normalize(pos);
+    float3 pos = worldPos.xyz;
+    float dist = length(pos);
+    float3 normal = normalize(pos);
     
-    // // Only apply Julia set to TOP region of mesh (positive Y)
-    // // Use wider smoothstep for smoother transition at region boundary
-    // float regionMask = smoothstep(-1.5f, 1.0f, pos.y); // wider, smoother transition
+    // MUCH smoother region mask - very wide transition zone
+    float regionMask = smoothstep(-3.0f, 2.0f, pos.y); // VERY wide, smooth transition
     
-    // // Only proceed if we're in the selected region
-    // if (regionMask > 0.01f)
-    // {
-    //     float growthTime = time * speed;
+    // Only proceed if we're in the selected region
+    if (regionMask > 0.001f)
+    {
+        float growthTime = time * speed;
         
-    //     // Create fractal pattern using Mandelbrot-like iteration
-    //     float3 z = pos * 2.0f;
-    //     float julia = 0.0f;
-    //     float juliaStrength = 0.0f;
+        // Create fractal pattern using Mandelbrot-like iteration
+        float3 z = pos * 2.0f;
+        float julia = 0.0f;
+        float juliaStrength = 0.0f;
         
-    //     // Iterate to create fractal structure
-    //     for (int i = 0; i < 5; i++)
-    //     {
-    //         z = abs(z) - float3(0.7f, 0.7f, 0.7f);
-    //         float len = length(z);
+        // Iterate to create fractal structure
+        for (int i = 0; i < 5; i++)
+        {
+            z = abs(z) - float3(0.7f, 0.7f, 0.7f);
+            float len = length(z);
             
-    //         julia = len;
-    //         juliaStrength += 1.0f / (0.1f + len * len);
+            julia = len;
+            juliaStrength += 1.0f / (0.1f + len * len);
             
-    //         if (len > 3.0f) break;
-    //     }
+            if (len > 3.0f) break;
+        }
         
-    //     // Normalize and threshold to get distinct regions
-    //     juliaStrength = fmod(juliaStrength * 0.5f, 1.0f);
+        // Normalize and threshold to get distinct regions
+        juliaStrength = fmod(juliaStrength * 0.5f, 1.0f);
         
-    //     // Use smoothstep instead of step for smoother edges on Julia boundaries
-    //     float shouldGrow = smoothstep(0.5f, 0.7f, juliaStrength) * smoothstep(1.0f, 0.85f, juliaStrength);
+        // MUCH smoother edges - wider smoothstep ranges for gradual transitions
+        float shouldGrow = smoothstep(0.3f, 0.8f, juliaStrength) * smoothstep(1.0f, 0.7f, juliaStrength);
+        // Extra smoothing pass
+        shouldGrow = smoothstep(0.0f, 1.0f, shouldGrow);
         
-    //     // Apply smooth growth
-    //     if (shouldGrow > 0.01f)
-    //     {
-    //         // Sine wave oscillation - grows and shrinks smoothly
-    //         float oscillation = sin(growthTime * 2.0f * 3.14159f);
+        // Apply smooth growth
+        if (shouldGrow > 0.001f)
+        {
+            // Sine wave oscillation - grows and shrinks smoothly
+            float oscillation = sin(growthTime * 2.0f * 3.14159f);
             
-    //         // Smoother bulge function
-    //         float bulge = sin(julia * 8.0f) * 0.3f;  // reduced frequency for smoother shapes
-    //         bulge *= max(0.0f, oscillation);
+            // MUCH smoother bulge function - lower frequency
+            float bulge = sin(julia * 4.0f) * 0.25f;  // Lower frequency = smoother
+            bulge *= smoothstep(-0.2f, 0.8f, oscillation);  // Smooth the oscillation too
             
-    //         // Apply smooth growth with gradual falloff
-    //         deformed.xyz += normal * bulge * 0.35f * regionMask * shouldGrow;
-    //     }
-    // }
+            // Apply smooth growth with very gradual falloff
+            deformed.xyz += normal * bulge * 0.3f * regionMask * shouldGrow;
+        }
+    }
     
-    // // Add wave deformation on top
-    // float waveFreq1 = 2.5f;
-    // float waveFreq2 = 1.8f;
-    // float waveAmplitude = (0.12f * 0.25f) * Globals.WaveAmplitudeScale;
-    // float waveSpeed = (0.4f * 0.25f) * Globals.WaveSpeedScale;
+    // Add wave deformation on top - smoother waves
+    float waveFreq1 = 1.5f;  // Lower frequency = smoother
+    float waveFreq2 = 1.2f;
+    float waveAmplitude = (0.12f * 0.25f) * Globals.WaveAmplitudeScale;
+    float waveSpeed = (0.4f * 0.25f) * Globals.WaveSpeedScale;
     
-    // float wave1 = sin(worldPos.x * waveFreq1 + time * waveSpeed) * waveAmplitude;
-    // float wave2 = sin(worldPos.y * waveFreq2 - time * waveSpeed * 0.7f) * waveAmplitude * 0.6f;
-    // float wave3 = sin(worldPos.z * waveFreq1 * 0.8f + time * waveSpeed * 0.5f) * waveAmplitude * 0.4f;
+    float wave1 = sin(worldPos.x * waveFreq1 + time * waveSpeed) * waveAmplitude;
+    float wave2 = sin(worldPos.y * waveFreq2 - time * waveSpeed * 0.7f) * waveAmplitude * 0.6f;
+    float wave3 = sin(worldPos.z * waveFreq1 * 0.8f + time * waveSpeed * 0.5f) * waveAmplitude * 0.4f;
     
-    // deformed.x += wave2 + wave3 * 0.5f;
-    // deformed.y += wave1 * 0.7f;
-    // deformed.z += wave3 + wave1 * 0.3f;
+    deformed.x += wave2 + wave3 * 0.5f;
+    deformed.y += wave1 * 0.7f;
+    deformed.z += wave3 + wave1 * 0.3f;
     
-    // return deformed;
-    return worldPos;
+    return deformed;
 }
 
 [NumThreads(16, 1, 1)]
