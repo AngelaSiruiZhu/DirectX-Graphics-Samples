@@ -268,18 +268,17 @@ float4 DeformVertex(float4 worldPos, float time)
     float4 deformed = worldPos;
     
     // Animation parameters
-    float speed = 0.1f * 0.25f;  // slow down sketch growth
+    float speed = 0.1f * 0.25f;
     
     float3 pos = worldPos.xyz;
     float dist = length(pos);
     float3 normal = normalize(pos);
     
-    // Only apply Julia set to TOP region of mesh (positive Y)
-    // Use wider smoothstep for smoother transition at region boundary
-    float regionMask = smoothstep(-1.5f, 1.0f, pos.y); // wider, smoother transition
+    // MUCH smoother region mask - very wide transition zone
+    float regionMask = smoothstep(-3.0f, 2.0f, pos.y); // VERY wide, smooth transition
     
     // Only proceed if we're in the selected region
-    if (regionMask > 0.01f)
+    if (regionMask > 0.001f)
     {
         float growthTime = time * speed;
         
@@ -303,27 +302,29 @@ float4 DeformVertex(float4 worldPos, float time)
         // Normalize and threshold to get distinct regions
         juliaStrength = fmod(juliaStrength * 0.5f, 1.0f);
         
-        // Use smoothstep instead of step for smoother edges on Julia boundaries
-        float shouldGrow = smoothstep(0.5f, 0.7f, juliaStrength) * smoothstep(1.0f, 0.85f, juliaStrength);
+        // MUCH smoother edges - wider smoothstep ranges for gradual transitions
+        float shouldGrow = smoothstep(0.3f, 0.8f, juliaStrength) * smoothstep(1.0f, 0.7f, juliaStrength);
+        // Extra smoothing pass
+        shouldGrow = smoothstep(0.0f, 1.0f, shouldGrow);
         
         // Apply smooth growth
-        if (shouldGrow > 0.01f)
+        if (shouldGrow > 0.001f)
         {
             // Sine wave oscillation - grows and shrinks smoothly
             float oscillation = sin(growthTime * 2.0f * 3.14159f);
             
-            // Smoother bulge function
-            float bulge = sin(julia * 8.0f) * 0.3f;  // reduced frequency for smoother shapes
-            bulge *= max(0.0f, oscillation);
+            // MUCH smoother bulge function - lower frequency
+            float bulge = sin(julia * 4.0f) * 0.25f;  // Lower frequency = smoother
+            bulge *= smoothstep(-0.2f, 0.8f, oscillation);  // Smooth the oscillation too
             
-            // Apply smooth growth with gradual falloff
-            deformed.xyz += normal * bulge * 0.35f * regionMask * shouldGrow;
+            // Apply smooth growth with very gradual falloff
+            deformed.xyz += normal * bulge * 0.3f * regionMask * shouldGrow;
         }
     }
     
-    // Add wave deformation on top
-    float waveFreq1 = 2.5f;
-    float waveFreq2 = 1.8f;
+    // Add wave deformation on top - smoother waves
+    float waveFreq1 = 1.5f;  // Lower frequency = smoother
+    float waveFreq2 = 1.2f;
     float waveAmplitude = (0.12f * 0.25f) * Globals.WaveAmplitudeScale;
     float waveSpeed = (0.4f * 0.25f) * Globals.WaveSpeedScale;
     

@@ -53,14 +53,14 @@
         },
         {
             "name": "Cloud 7",
-            "mesh": "cloud_1.vtk",
+            "mesh": "cloud_4.vtk",
             "position": [-35.0, 10.0, 20.0],
             "rotation": [0.0, 0.4, 0.0],
             "scale": [7.5, 5.5, 6.0]
         },
         {
             "name": "Cloud 8 - Tall",
-            "mesh": "cloud_2.vtk",
+            "mesh": "cloud_3.vtk",
             "position": [30.0, 14.0, -15.0],
             "rotation": [0.0, 2.9, 0.0],
             "scale": [5.0, 7.0, 5.0]
@@ -102,7 +102,7 @@
         },
         {
             "name": "Cloud 14 - Very Tall",
-            "mesh": "cloud_2.vtk",
+            "mesh": "cloud_3.vtk",
             "position": [8.0, 22.0, 40.0],
             "rotation": [0.0, 2.7, 0.0],
             "scale": [15.0, 18.0, 14.0]
@@ -137,14 +137,14 @@
         },
         {
             "name": "Cloud 19 - Tall",
-            "mesh": "cloud_1.vtk",
+            "mesh": "cloud_4.vtk",
             "position": [-15.0, 2.0, 28.0],
             "rotation": [0.0, 2.0, 0.0],
             "scale": [5.5, 7.0, 5.0]
         },
         {
             "name": "Cloud 20",
-            "mesh": "cloud_2.vtk",
+            "mesh": "cloud_3.vtk",
             "position": [45.0, 17.0, 15.0],
             "rotation": [0.0, 1.3, 0.0],
             "scale": [7.5, 5.0, 6.0]
