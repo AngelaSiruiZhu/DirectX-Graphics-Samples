@@ -1,0 +1,1238 @@
+const fs = require('fs');
+const path = require('path');
+
+// --- Configuration ---
+const CONFIG = {
+    outputFile: 'generated_cloud.vtk',
+    shape: 'cumulus', // 'cumulus', 'stratus', 'wispy', 'sphere'
+    resolution: 32,   // Grid size (e.g., 32x32x32)
+    scale: 0.5,       // Noise frequency scale (lower for smoother, higher for more detail)
+    threshold: 0.48,   // Slightly higher threshold for initial sparsity
+    octaves: 5,        // More octaves for finer detail
+    persistance: 0.5,  // B1: Try 0.65 for more detail retention
+    lacunarity: 2.0,   // B1: Try 2.5 for more scale variation
+    jitter: 0.6,       // Random vertex displacement (0.0 to 1.0)
+    smoothIters: 5,    // Laplacian smoothing iterations
+    smoothStr: 0.6,    // Smoothing strength (0.0 to 1.0)
+    mode: 'grid',      // 'grid', 'soup', 'structure', 'cluster', 'skeleton', or 'fragment'
+    seed: 0            // B1: Random seed for noise variation (0 = default)
+};
+
+// Parse command line args
+const args = process.argv.slice(2);
+for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--shape') CONFIG.shape = args[++i];
+    else if (arg === '--res') CONFIG.resolution = parseInt(args[++i]);
+    else if (arg === '--out') CONFIG.outputFile = args[++i];
+    else if (arg === '--scale') CONFIG.scale = parseFloat(args[++i]);
+    else if (arg === '--thresh') CONFIG.threshold = parseFloat(args[++i]);
+    else if (arg === '--octaves') CONFIG.octaves = parseInt(args[++i]);
+    else if (arg === '--persistance') CONFIG.persistance = parseFloat(args[++i]);
+    else if (arg === '--lacunarity') CONFIG.lacunarity = parseFloat(args[++i]);
+    else if (arg === '--jitter') CONFIG.jitter = parseFloat(args[++i]);
+    else if (arg === '--smoothIters') CONFIG.smoothIters = parseInt(args[++i]);
+    else if (arg === '--smoothStr') CONFIG.smoothStr = parseFloat(args[++i]);
+    else if (arg === '--mode') CONFIG.mode = args[++i];
+    else if (arg === '--seed') CONFIG.seed = parseInt(args[++i]);
+    else if (arg === '--help') {
+        console.log("Usage: node generate_cloud.js ... [--mode <grid|soup|structure|cluster|skeleton|fragment>]");
+        process.exit(0);
+    }
+}
+
+console.log(`Generating ${CONFIG.shape} cloud in '${CONFIG.mode}' mode...`);
+console.log(`Resolution: ${CONFIG.resolution}, Output: ${CONFIG.outputFile}`);
+
+// --- Math & Noise ---
+// Simple hashing for deterministic 3D noise (incorporates seed for variation)
+function hash(x, y, z) {
+    // Mix seed into the hash for different random patterns
+    let h = (x * 374761393) ^ (y * 668265263) ^ (z * 963246279) ^ (CONFIG.seed * 198491317);
+    h = (h ^ (h >> 13)) * 1274126177;
+    return (h >>> 0) / 4294967296;
+}
+
+// Trilinear interpolation
+function lerp(a, b, t) { return a + t * (b - a); }
+function saturate(v) { return Math.min(1.0, Math.max(0.0, v)); }
+
+// Correct GLSL-style smoothstep with clamping
+function smoothstep(edge0, edge1, x) {
+    // If only 1 argument is provided, assume standard s-curve 0..1 (legacy support if used elsewhere incorrectly, but better to be strict)
+    // However, looking at usage 'smoothstep(fx)' in noise(), that expects 0..1 input and s-curve output.
+    // We need to support both or fix call sites.
+    
+    // CASE A: noise() calls smoothstep(t) -> expecting Hermite interpolation of t (where t is 0..1)
+    if (arguments.length === 1) {
+        let t = edge0; // mapped to first arg
+        return t * t * (3 - 2 * t);
+    }
+
+    // CASE B: standard GLSL smoothstep(edge0, edge1, x)
+    let t = (x - edge0) / (edge1 - edge0);
+    t = Math.max(0.0, Math.min(1.0, t)); 
+    return t * t * (3 - 2 * t);
+}
+
+// Value Noise 3D
+function noise(x, y, z) {
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    const iz = Math.floor(z);
+
+    const fx = x - ix;
+    const fy = y - iy;
+    const fz = z - iz;
+
+    const u = smoothstep(fx);
+    const v = smoothstep(fy);
+    const w = smoothstep(fz);
+
+    // 8 corners
+    const n000 = hash(ix,   iy,   iz);
+    const n100 = hash(ix+1, iy,   iz);
+    const n010 = hash(ix,   iy+1, iz);
+    const n110 = hash(ix+1, iy+1, iz);
+    const n001 = hash(ix,   iy,   iz+1);
+    const n101 = hash(ix+1, iy,   iz+1);
+    const n011 = hash(ix,   iy+1, iz+1);
+    const n111 = hash(ix+1, iy+1, iz+1);
+
+    const nx00 = lerp(n000, n100, u);
+    const nx10 = lerp(n010, n110, u);
+    const nx01 = lerp(n001, n101, u);
+    const nx11 = lerp(n011, n111, u);
+
+    const nxy0 = lerp(nx00, nx10, v);
+    const nxy1 = lerp(nx01, nx11, v);
+
+    return lerp(nxy0, nxy1, w);
+}
+
+// Fractal Brownian Motion (Octaves)
+function fbm(x, y, z) {
+    let value = 0.0;
+    let amplitude = 1.0;
+    let frequency = 1.0;
+    for (let i = 0; i < CONFIG.octaves; i++) {
+        value += amplitude * noise(x * frequency, y * frequency, z * frequency);
+        amplitude *= CONFIG.persistance;
+        frequency *= CONFIG.lacunarity;
+    }
+    return value;
+}
+
+// --- SDF / Density Functions ---
+function getDensity(x, y, z) {
+    // Normalize coordinates to -1.0 to 1.0
+    const resolutionReciprocal = 1.0 / CONFIG.resolution;
+    const nx = (x * resolutionReciprocal) * 2 - 1;
+    const ny = (y * resolutionReciprocal) * 2 - 1;
+    const nz = (z * resolutionReciprocal) * 2 - 1;
+
+    // Offset noise sampling coordinates
+    const noiseOffset = 100.0;
+    const noiseScale = 2.0 * CONFIG.scale + noiseOffset;
+    let baseNoise = fbm(nx * noiseScale, ny * noiseScale, nz * noiseScale);
+
+    // GLOBAL CONTAINER FALLOFF
+    // We use a distorted sphere to act as the main container.
+    // This ensures no cube corners, but allows organic lumps.
+    let containerNoise = fbm(nx * 0.8, ny * 0.8, nz * 0.8) * 0.5; 
+    let distFromCenter = Math.sqrt(nx*nx + ny*ny + nz*nz) + containerNoise;
+    let globalFalloff = 1.0 - smoothstep(0.6, 0.98, distFromCenter);
+    
+    // Apply shape modifications
+    let density = 0.0;
+
+    if (CONFIG.shape === 'sphere') {
+        density = baseNoise * globalFalloff;
+    } else if (CONFIG.shape === 'cumulus') {
+        // Cumulus: Blobby, flat bottom
+        let bottomFactor = smoothstep(-0.6, -0.2, ny);
+        // Warping
+        let warp = fbm(nx * 1.2, ny * 1.2, nz * 1.2) * 1.2;
+        let shape = (1.0 - distFromCenter + warp) * globalFalloff * bottomFactor;
+        density = saturate(shape * 2.5 * baseNoise); 
+
+    } else if (CONFIG.shape === 'stratus') {
+        // Stratus: Flat layers
+        const yDist = Math.abs(ny);
+        const verticalFalloff = 1.0 - smoothstep(0.1, 0.5, yDist);
+        density = baseNoise * verticalFalloff * globalFalloff;
+
+    } else if (CONFIG.shape === 'wispy') {
+        const dist = Math.sqrt(nx*nx + ny*ny + nz*nz);
+        const radialFalloff = 1.0 - smoothstep(0.2, 1.0, dist);
+        baseNoise = fbm(nx * noiseScale * 2.0, ny * noiseScale * 2.0, nz * noiseScale * 2.0, CONFIG.octaves + 2);
+        density = baseNoise * radialFalloff * 0.8;
+
+    } else if (CONFIG.shape === 'storm') {
+        // STORM: Domain Warping for wild, swirling, concave shapes
+        // q = fbm(p)
+        let qx = fbm(nx*1.5, ny*1.5, nz*1.5);
+        let qy = fbm(nx*1.5 + 5.2, ny*1.5 + 1.3, nz*1.5 + 2.8);
+        let qz = fbm(nx*1.5 - 2.8, ny*1.5 - 4.5, nz*1.5 + 1.1);
+
+        // r = fbm(p + q)
+        let rx = fbm(nx*1.5 + 4.0*qx, ny*1.5 + 4.0*qy, nz*1.5 + 4.0*qz);
+        let ry = fbm(nx*1.5 + 4.0*qx + 4.8, ny*1.5 + 4.0*qy + 9.2, nz*1.5 + 4.0*qz + 3.1);
+        let rz = fbm(nx*1.5 + 4.0*qx - 2.3, ny*1.5 + 4.0*qy - 1.5, nz*1.5 + 4.0*qz - 5.4);
+
+        // density = fbm(p + r)
+        let warpedDensity = fbm(nx*1.0 + 2.0*rx, ny*1.0 + 2.0*ry, nz*1.0 + 2.0*rz);
+
+        // Container (relaxed sphere)
+        let dist = Math.sqrt(nx*nx + ny*ny + nz*nz);
+        let falloff = 1.0 - smoothstep(0.5, 0.95, dist);
+
+        // Swiss Cheese: Sharpen density to create holes
+        warpedDensity = warpedDensity * warpedDensity * 2.5;
+
+        density = warpedDensity * falloff;
+
+    } else if (CONFIG.shape === 'chaos') {
+        // CHAOS 2.0: Broken, Asymmetrical, Non-Spherical
+        
+        // 1. Shape Anisotropy (Stretch it)
+        // Make it wider (X/Z) and thinner (Y)
+        let sx = nx * 0.7; 
+        let sy = ny * 1.0; // Taller Y freq = thinner layers
+        let sz = nz * 0.7;
+
+        // 2. Island Mask (Low Frequency)
+        // Cuts the volume into separate chunks.
+        // We shift the noise so "0" is the cutoff.
+        let islandMask = fbm(sx * 1.5, sy * 1.5, sz * 1.5) - 0.2;
+        
+        // If we are in a negative island zone, kill it early
+        if (islandMask < 0.0) return 0.0;
+
+        // 3. Domain Warping (Turbulence) inside the islands
+        let qx = fbm(sx + 5.2, sy + 1.3, sz + 2.8);
+        let qy = fbm(sx - 2.8, sy - 4.5, sz + 1.1);
+        let qz = fbm(sx + 1.1, sy + 3.2, sz - 0.5);
+
+        let rx = fbm(sx + 4.0*qx, sy + 4.0*qy, sz + 4.0*qz);
+        let ry = fbm(sx + 4.0*qx + 4.8, sy + 4.0*qy + 9.2, sz + 4.0*qz + 3.1);
+        let rz = fbm(sx + 4.0*qx - 2.3, sy + 4.0*qy - 1.5, sz + 4.0*qz - 5.4);
+
+        let detail = fbm(sx*2.0 + 4.0*rx, sy*2.0 + 4.0*ry, sz*2.0 + 4.0*rz);
+
+        // Combine Island Mask * Detail
+        // detail is 0..1, islandMask is 0..0.8
+        density = detail * islandMask * 4.0;
+    } else if (CONFIG.shape === 'multilobe') {
+        // B3: MULTILOBE - Multiple overlapping density centers for complex silhouettes
+        // Generate 4 blob centers using seed-based offsets
+        const lobes = [
+            { cx: 0.0, cy: 0.0, cz: 0.0, r: 0.7, w: 1.0 },  // Main center
+            { cx: 0.4, cy: 0.2, cz: 0.1, r: 0.5, w: 0.8 },  // Right bulge
+            { cx: -0.3, cy: 0.3, cz: 0.2, r: 0.4, w: 0.7 }, // Left top
+            { cx: 0.1, cy: -0.2, cz: -0.3, r: 0.45, w: 0.75 }, // Back bottom
+            { cx: -0.2, cy: 0.1, cz: 0.4, r: 0.35, w: 0.6 }  // Front
+        ];
+
+        // Smooth-min for soft union of blobs
+        function smin(a, b, k) {
+            let h = Math.max(k - Math.abs(a - b), 0.0) / k;
+            return Math.min(a, b) - h * h * k * 0.25;
+        }
+
+        // Combine all lobes with smooth-min
+        let combinedDist = 10.0; // Start far
+        for (let lobe of lobes) {
+            // Distance to this lobe center (in normalized space)
+            let dx = nx - lobe.cx;
+            let dy = ny - lobe.cy;
+            let dz = nz - lobe.cz;
+
+            // Add noise distortion to each lobe
+            let noiseWarp = fbm(dx * 2.0, dy * 2.0, dz * 2.0) * 0.3;
+            let dist = Math.sqrt(dx*dx + dy*dy + dz*dz) + noiseWarp;
+
+            // SDF: distance from surface of sphere (negative inside)
+            let sdf = dist - lobe.r;
+
+            combinedDist = smin(combinedDist, sdf, 0.3); // k=0.3 for smooth blending
+        }
+
+        // Convert SDF to density (inside = high density)
+        let falloff = 1.0 - smoothstep(-0.1, 0.2, combinedDist);
+
+        // Add detail noise
+        let detail = fbm(nx * 3.0, ny * 3.0, nz * 3.0) * 0.5 + 0.5;
+
+        density = falloff * detail;
+    }
+
+        // Apply the Global Falloff (safety net)
+        // Remove the box falloff entirely. We will rely on the domain warping container or sampling limits.
+        return density;
+    }
+    
+    
+    // --- Mesh Generation ---
+    const vertices = []; // Array of [x,y,z]
+    const vertexMap = new Map(); // Key "x,y,z" -> index
+    const indices = []; // Array of indices (4 per tet)
+    
+    function getVertexIndex(x, y, z) {
+        // Helper to quantize and dedup vertices
+        // In structure mode, we might want fewer quantizations?
+        // Let's stick to simple string keys for now.
+        const px = Math.round(x * 1000) / 1000;
+        const py = Math.round(y * 1000) / 1000;
+        const pz = Math.round(z * 1000) / 1000;
+        
+        const key = `${px},${py},${pz}`;
+        if (vertexMap.has(key)) {
+            return vertexMap.get(key);
+        }
+        const idx = vertices.length;
+        vertices.push([x, y, z]);
+        vertexMap.set(key, idx);
+        return idx;
+    }
+    
+    function generate() {
+    // ... (keep existing) ...
+    // Note: I'm just mocking the existing generate because 'replace' requires exact match.
+    // But since I don't see the full generate() function in the context, I cannot replace it correctly.
+    // I will assume the user wants me to ADD the 'generateStructure' function.
+    // I will use 'generateSoup' as the anchor.
+    }
+    
+    function generateStructure() {
+        console.log("Generating Structural Mesh (Distorted IcoSphere)...");
+        
+        // 1. Create IcoSphere
+        const t = (1.0 + Math.sqrt(5.0)) / 2.0;
+        
+        // Base vertices (scaled to resolution)
+        const scale = CONFIG.resolution * 0.4; // 0.8 radius
+        const offset = CONFIG.resolution * 0.5;
+        
+        let baseVerts = [
+            [-1,  t,  0], [ 1,  t,  0], [-1, -t,  0], [ 1, -t,  0],
+            [ 0, -1,  t], [ 0,  1,  t], [ 0, -1, -t], [ 0,  1, -t],
+            [ t,  0, -1], [ t,  0,  1], [-t,  0, -1], [-t,  0,  1]
+        ].map(v => {
+            // Normalize
+            let len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+            return [v[0]/len, v[1]/len, v[2]/len];
+        });
+
+        // Base 20 faces (triangles)
+        let faces = [
+            [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+            [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+            [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+            [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]
+        ];
+
+        // Subdivide
+        const subdivisions = 2; // Keep low for < 10k tets. 20 * 4^2 = 320 faces. 
+        // 320 faces -> extruded to center = 320 tets? No, that's too simple.
+        // We will create a "Shell" or just fill the volume with big tets?
+        // Let's fill the volume by subdividing the TETS.
+        
+        // Actually, easiest way to get low-poly complex shapes is to build a Surface Mesh
+        // and then tetrahedralize it (hard without library) OR
+        // Build a volumetric grid of tets and warp them.
+        
+        // Let's try "Warped Grid" approach but with very low resolution (e.g. 8x8x8)
+        // This guarantees connectivity and we can cull empty ones.
+        
+        // Aim for ~5000-8000 tets. 
+        // 16x16x16 = 4096 cells. If 30% are filled = 1200 cells. 5 tets/cell = 6000 tets.
+        const gridRes = Math.floor(CONFIG.resolution * 0.5); 
+        console.log(`Grid Resolution: ${gridRes}x${gridRes}x${gridRes}`);
+        
+        const step = CONFIG.resolution / gridRes;
+        
+        for (let x = 0; x < gridRes; x++) {
+            for (let y = 0; y < gridRes; y++) {
+                for (let z = 0; z < gridRes; z++) {
+                    
+                    // Coordinates of cell corner
+                    let cx = x * step;
+                    let cy = y * step;
+                    let cz = z * step;
+                    
+                    // Center of cell for noise sampling
+                    let mx = cx + step*0.5;
+                    let my = cy + step*0.5;
+                    let mz = cz + step*0.5;
+                    
+                    // Check density
+                    if (getDensity(mx, my, mz) < CONFIG.threshold) continue;
+                    
+                    // Create 8 vertices for the cube
+                    // Warp them individually!
+                    const cubeVerts = [];
+                    for(let i=0; i<8; i++) {
+                        let vx = cx + ((i & 1) ? step : 0);
+                        let vy = cy + ((i & 2) ? step : 0);
+                        let vz = cz + ((i & 4) ? step : 0);
+                        
+                        // Domain Warp Position
+                        // Normalize to 0..1 for noise
+                        let nx = vx / CONFIG.resolution;
+                        let ny = vy / CONFIG.resolution;
+                        let nz = vz / CONFIG.resolution;
+                        
+                        // Warp amount - B2: altitude-dependent (more at top for wind-shredded look)
+                        let baseStr = 3.5;
+                        let altitudeFactor = 1.0 + (ny - 0.5) * 0.8; // 0.6 at bottom, 1.4 at top
+                        let str = baseStr * altitudeFactor;
+                        let dx = fbm(nx*1.5, ny*1.5, nz*1.5) * str * step;
+                        let dy = fbm(nx*1.5+10, ny*1.5+10, nz*1.5) * str * step;
+                        let dz = fbm(nx*1.5+20, ny*1.5+20, nz*1.5) * str * step;
+                        
+                        cubeVerts.push(getVertexIndex(vx+dx, vy+dy, vz+dz));
+                    }
+                    
+                    // Tessellate Cube into 5 Tets
+                    // v0,v1,v3,v4
+                    indices.push([cubeVerts[0], cubeVerts[1], cubeVerts[3], cubeVerts[4]]);
+                    // v1,v2,v3,v6
+                    indices.push([cubeVerts[1], cubeVerts[2], cubeVerts[3], cubeVerts[6]]);
+                    // v1,v4,v5,v6
+                    indices.push([cubeVerts[1], cubeVerts[4], cubeVerts[5], cubeVerts[6]]);
+                    // v1,v3,v4,v6
+                    indices.push([cubeVerts[1], cubeVerts[3], cubeVerts[4], cubeVerts[6]]);
+                    // Wait, standard 5-tet decomposition requires specific parity to match neighbors.
+                    // For "low poly cloud", strict parity matching matters less if we just want "stuff".
+                    // But cracks are bad.
+                    // Let's use 6-tet decomposition (Standard diagonal split)
+                    // It's robust.
+                    
+                    // Or simpler: Just generating "stuff" for the shader to chew on.
+                    // Let's rely on the 5-tet decomposition with parity check.
+                    
+                    // Correct 5-tet decomposition for a cube (0,1,2,3,4,5,6,7)
+                    // (0,0,0), (1,0,0), (0,1,0), (1,1,0)...
+                    // T1: 0 1 3 5
+                    indices.push([cubeVerts[0], cubeVerts[1], cubeVerts[3], cubeVerts[5]]);
+                    // T2: 3 6 5 7
+                    indices.push([cubeVerts[3], cubeVerts[6], cubeVerts[5], cubeVerts[7]]);
+                    // T3: 0 5 4 6
+                    indices.push([cubeVerts[0], cubeVerts[5], cubeVerts[4], cubeVerts[6]]);
+                    // T4: 0 6 3 2
+                    indices.push([cubeVerts[0], cubeVerts[6], cubeVerts[3], cubeVerts[2]]);
+                    // T5: 0 3 5 6 (Center)
+                    indices.push([cubeVerts[0], cubeVerts[3], cubeVerts[5], cubeVerts[6]]);
+                }
+            }
+        }
+    }
+
+    function generateSmooth() {
+        // SMOOTH MODE: High-res icosphere surface with noise displacement
+        // Creates smooth outer edges with sparse interior tets
+        console.log("Generating Smooth Surface Mesh (Subdivided IcoSphere)...");
+
+        const subdivisions = 5; // High subdivision for very smooth edges (20480 faces)
+        console.log(`Subdivisions: ${subdivisions} (target ~${20 * Math.pow(4, subdivisions)} faces)`);
+
+        // Golden ratio for icosahedron
+        const t = (1.0 + Math.sqrt(5.0)) / 2.0;
+
+        // Icosahedron vertices (normalized)
+        let icoVerts = [
+            [-1,  t,  0], [ 1,  t,  0], [-1, -t,  0], [ 1, -t,  0],
+            [ 0, -1,  t], [ 0,  1,  t], [ 0, -1, -t], [ 0,  1, -t],
+            [ t,  0, -1], [ t,  0,  1], [-t,  0, -1], [-t,  0,  1]
+        ].map(v => {
+            let len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+            return [v[0]/len, v[1]/len, v[2]/len];
+        });
+
+        // Icosahedron faces
+        let faces = [
+            [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+            [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+            [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+            [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]
+        ];
+
+        // Subdivide faces
+        const midpointCache = new Map();
+        function getMidpoint(i1, i2) {
+            const key = i1 < i2 ? `${i1}_${i2}` : `${i2}_${i1}`;
+            if (midpointCache.has(key)) return midpointCache.get(key);
+
+            const v1 = icoVerts[i1];
+            const v2 = icoVerts[i2];
+            let mid = [(v1[0]+v2[0])/2, (v1[1]+v2[1])/2, (v1[2]+v2[2])/2];
+            // Project to unit sphere
+            let len = Math.sqrt(mid[0]*mid[0] + mid[1]*mid[1] + mid[2]*mid[2]);
+            mid = [mid[0]/len, mid[1]/len, mid[2]/len];
+
+            const idx = icoVerts.length;
+            icoVerts.push(mid);
+            midpointCache.set(key, idx);
+            return idx;
+        }
+
+        for (let s = 0; s < subdivisions; s++) {
+            const newFaces = [];
+            for (const [a, b, c] of faces) {
+                const ab = getMidpoint(a, b);
+                const bc = getMidpoint(b, c);
+                const ca = getMidpoint(c, a);
+                newFaces.push([a, ab, ca]);
+                newFaces.push([b, bc, ab]);
+                newFaces.push([c, ca, bc]);
+                newFaces.push([ab, bc, ca]);
+            }
+            faces = newFaces;
+            midpointCache.clear();
+        }
+
+        console.log(`Surface: ${icoVerts.length} vertices, ${faces.length} triangles`);
+
+        // Scale and displace vertices with noise + multi-lobe shape
+        const scale = CONFIG.resolution * 0.4;
+        const center = CONFIG.resolution * 0.5;
+
+        // Seeded random for reproducible but varied results
+        let rngSeed = CONFIG.seed;
+        function rand() {
+            rngSeed = (rngSeed * 1103515245 + 12345) & 0x7fffffff;
+            return rngSeed / 0x7fffffff;
+        }
+
+        // ============================================================
+        // EXTREME BOLD: Wild scattered cloud with massive size variation
+        // Lobes very far apart - disconnection encouraged!
+        // ============================================================
+        const lobes = [];
+
+        // Create 2-5 MAJOR island clusters spread EXTREMELY far apart
+        const islands = [];
+        const numIslands = 2 + Math.floor(rand() * 4);
+        for (let i = 0; i < numIslands; i++) {
+            islands.push({
+                x: (rand() - 0.5) * 8.0,   // EXTREME spread
+                y: rand() * 1.0 - 0.4,
+                z: (rand() - 0.5) * 7.0,
+                size: 0.15 + rand() * 3.5   // From tiny to MASSIVE
+            });
+        }
+
+        // For each island, create its lobe family
+        for (let island of islands) {
+            // Core lobe - size varies dramatically
+            let coreSize = (0.5 + rand() * 1.5) * island.size;
+            lobes.push({
+                cx: island.x,
+                cy: island.y,
+                cz: island.z,
+                r: coreSize
+            });
+
+            // Secondary lobes spread WIDE around core
+            const numSecondary = 2 + Math.floor(rand() * 5);
+            for (let i = 0; i < numSecondary; i++) {
+                let angle = rand() * Math.PI * 2;
+                let dist = (0.5 + rand() * 1.5) * island.size;  // Spread further
+                let sizeVar = 0.1 + rand() * 0.9;  // Extreme size variation
+                lobes.push({
+                    cx: island.x + Math.cos(angle) * dist,
+                    cy: island.y + (rand() - 0.3) * 1.2,
+                    cz: island.z + Math.sin(angle) * dist,
+                    r: sizeVar * island.size
+                });
+            }
+
+            // Small satellite puffs - some near, some far
+            const numSatellites = 5 + Math.floor(rand() * 8);
+            for (let i = 0; i < numSatellites; i++) {
+                let angle = rand() * Math.PI * 2;
+                let dist = (0.3 + rand() * 2.0) * island.size;  // Can be quite far
+                lobes.push({
+                    cx: island.x + Math.cos(angle) * dist,
+                    cy: island.y + (rand() - 0.4) * 1.5,
+                    cz: island.z + Math.sin(angle) * dist,
+                    r: (0.05 + rand() * 0.4) * island.size  // Tiny to medium
+                });
+            }
+        }
+
+        // Vertical towers - TALL and varied thickness
+        const numTowers = 3 + Math.floor(rand() * 4);
+        for (let i = 0; i < numTowers; i++) {
+            let baseIsland = islands[Math.floor(rand() * islands.length)];
+            let towerHeight = 1.0 + rand() * 1.8;  // Very tall
+            let towerX = baseIsland.x + (rand() - 0.5) * 1.5;
+            let towerZ = baseIsland.z + (rand() - 0.5) * 1.5;
+            let towerThickness = 0.2 + rand() * 0.5;  // Varies from thin to chunky
+
+            // Stack lobes vertically with wobble
+            const towerLobes = 3 + Math.floor(rand() * 5);
+            for (let j = 0; j < towerLobes; j++) {
+                let wobbleAmt = (1 - j/towerLobes) * 0.4;
+                lobes.push({
+                    cx: towerX + (rand() - 0.5) * wobbleAmt,
+                    cy: 0.2 + (j / towerLobes) * towerHeight,
+                    cz: towerZ + (rand() - 0.5) * wobbleAmt,
+                    r: towerThickness * (0.7 + rand() * 0.6) - j * 0.02
+                });
+            }
+        }
+
+        // DISTANT outliers - isolated puffs far from main body
+        // These create the "doesn't have to be connected" effect
+        const numDistant = 10 + Math.floor(rand() * 12);
+        for (let i = 0; i < numDistant; i++) {
+            let dist = 2.5 + rand() * 4.0;  // VERY FAR
+            let angle = rand() * Math.PI * 2;
+            let sizeRoll = rand();
+            // Power distribution: mostly small, occasionally huge
+            let size = sizeRoll < 0.7 ? (0.1 + rand() * 0.5) : (0.6 + rand() * 1.5);
+            lobes.push({
+                cx: Math.cos(angle) * dist,
+                cy: rand() * 2.0 - 0.7,
+                cz: Math.sin(angle) * dist * 0.8,
+                r: size
+            });
+        }
+
+        // Tiny wisps scattered in the gaps
+        const numWisps = 12 + Math.floor(rand() * 18);
+        for (let i = 0; i < numWisps; i++) {
+            lobes.push({
+                cx: (rand() - 0.5) * 10.0,  // EXTREME scatter
+                cy: rand() * 2.0 - 0.5,
+                cz: (rand() - 0.5) * 8.0,
+                r: 0.02 + rand() * 0.2  // Tiny to small
+            });
+        }
+
+        // MASSIVE standalone blobs for dramatic variation
+        const numGiants = 2 + Math.floor(rand() * 3);
+        for (let i = 0; i < numGiants; i++) {
+            let angle = rand() * Math.PI * 2;
+            let dist = 2.0 + rand() * 3.5;
+            lobes.push({
+                cx: Math.cos(angle) * dist,
+                cy: rand() * 0.8 - 0.2,
+                cz: Math.sin(angle) * dist,
+                r: 1.0 + rand() * 1.8  // HUGE
+            });
+        }
+
+        console.log(`Generated ${lobes.length} ULTRA-SPREAD lobes in ${numIslands} islands + ${numTowers} towers + ${numDistant} distant + ${numGiants} giants`);
+
+        // ============================================================
+        // MULTI-CENTER TET TOPOLOGY
+        // Instead of all tets going to one center, assign faces to nearest
+        // major lobe center - creates more natural internal structure
+        // ============================================================
+
+        // Find the major lobes (largest ones) to use as local centers
+        const sortedLobes = [...lobes].sort((a, b) => b.r - a.r);
+        const numCenters = Math.min(Math.max(3, numIslands + 1), 8);  // 3-8 local centers
+        const localCenters = sortedLobes.slice(0, numCenters).map(lobe => ({
+            x: lobe.cx,
+            y: lobe.cy,
+            z: lobe.cz
+        }));
+
+        console.log(`Using ${localCenters.length} local tet centers`);
+
+        const surfaceVerts = icoVerts.map((v, i) => {
+            // Direction from center (unit vector)
+            let dx = v[0], dy = v[1], dz = v[2];
+
+            // Ray march from center outward to find lobe surface
+            // For each lobe, find where ray intersects its sphere
+            let maxDist = 0.1; // Minimum radius
+
+            for (let lobe of lobes) {
+                // Ray-sphere intersection: find t where |origin + t*dir - center| = radius
+                // origin = (0,0,0), dir = (dx,dy,dz), sphere at (lobe.cx, lobe.cy, lobe.cz)
+                let ocx = -lobe.cx;
+                let ocy = -lobe.cy;
+                let ocz = -lobe.cz;
+
+                let a = dx*dx + dy*dy + dz*dz; // = 1 for unit vector
+                let b = 2 * (ocx*dx + ocy*dy + ocz*dz);
+                let c = ocx*ocx + ocy*ocy + ocz*ocz - lobe.r*lobe.r;
+
+                let discriminant = b*b - 4*a*c;
+                if (discriminant >= 0) {
+                    let t1 = (-b - Math.sqrt(discriminant)) / (2*a);
+                    let t2 = (-b + Math.sqrt(discriminant)) / (2*a);
+                    // Take the far intersection (exit point)
+                    let t = Math.max(t1, t2);
+                    if (t > maxDist) maxDist = t;
+                }
+            }
+
+            // Noise displacement for organic bumps (reduced for smoother edges)
+            let noiseVal = fbm(dx * 2.5 + CONFIG.seed * 0.1, dy * 2.5, dz * 2.5);
+            let noiseVal2 = fbm(dx * 5.0, dy * 5.0, dz * 5.0);
+            let noiseDisp = (noiseVal * 0.15 + noiseVal2 * 0.05) * maxDist;
+
+            // Flatten bottom slightly
+            let bottomScale = dy < -0.6 ? (0.6 + (dy + 0.6) * 1.0) : 1.0;
+
+            let r = (maxDist + noiseDisp) * bottomScale;
+
+            return [
+                dx * r * scale + center,
+                dy * r * scale + center,
+                dz * r * scale + center
+            ];
+        });
+
+        // Create local center vertex indices (in world space)
+        const localCenterIndices = localCenters.map(lc =>
+            getVertexIndex(
+                lc.x * scale + center,
+                lc.y * scale + center,
+                lc.z * scale + center
+            )
+        );
+
+        // Create surface vertex indices
+        const surfaceIndices = surfaceVerts.map(v => getVertexIndex(v[0], v[1], v[2]));
+
+        // For each face, find nearest local center and extrude to it
+        for (const [a, b, c] of faces) {
+            // Get face centroid
+            let faceCenter = [
+                (surfaceVerts[a][0] + surfaceVerts[b][0] + surfaceVerts[c][0]) / 3,
+                (surfaceVerts[a][1] + surfaceVerts[b][1] + surfaceVerts[c][1]) / 3,
+                (surfaceVerts[a][2] + surfaceVerts[b][2] + surfaceVerts[c][2]) / 3
+            ];
+
+            // Find nearest local center
+            let nearestCenter = 0;
+            let nearestDist = Infinity;
+            for (let i = 0; i < localCenters.length; i++) {
+                let lcWorld = [
+                    localCenters[i].x * scale + center,
+                    localCenters[i].y * scale + center,
+                    localCenters[i].z * scale + center
+                ];
+                let dx = faceCenter[0] - lcWorld[0];
+                let dy = faceCenter[1] - lcWorld[1];
+                let dz = faceCenter[2] - lcWorld[2];
+                let dist = dx*dx + dy*dy + dz*dz;
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearestCenter = i;
+                }
+            }
+
+            indices.push([surfaceIndices[a], surfaceIndices[b], surfaceIndices[c], localCenterIndices[nearestCenter]]);
+        }
+
+        console.log(`Created ${indices.length} tetrahedra (multi-center extrusion)`);
+    }
+
+    function generateSoup() {
+        // "Cloud Soup": Randomly sample points and spawn independent tetrahedra (shards)
+        
+        const res = CONFIG.resolution;
+        const count = res * res * res * 2.0; 
+        const center = res * 0.5;
+        
+        console.log(`Sampling ${count} points in SPHERICAL domain...`);
+    
+        for (let i = 0; i < count; i++) {
+            // Rejection Sampling for Sphere
+            // Generate point in -1..1 box
+            let u = Math.random() * 2 - 1;
+            let v = Math.random() * 2 - 1;
+            let w = Math.random() * 2 - 1;
+            
+            // If outside sphere, skip immediately (Hard Sphere Constraint)
+            // This makes it impossible to form a cube corner.
+            if (u*u + v*v + w*w > 1.0) continue;
+    
+            // Map back to grid coordinates 0..res
+            let x = (u * 0.5 + 0.5) * res;
+            let y = (v * 0.5 + 0.5) * res;
+            let z = (w * 0.5 + 0.5) * res;
+            
+            const density = getDensity(x, y, z);
+            
+            if (density > CONFIG.threshold) {
+    // ... (keep existing) ...            // EXTREME VARIANCE:
+            // Tiny shards (dust) to Giant shards (boulders)
+            // Power distribution favors smaller shards but allows big ones.
+            let size = (0.1 + Math.pow(Math.random(), 3.0) * 2.5); 
+            
+            // Aspect Ratio Distortion: Stretch shards to look like wind-blown debris
+            let stretchX = 1.0 + Math.random();
+            let stretchY = 1.0 + Math.random() * 0.5;
+            let stretchZ = 1.0 + Math.random();
+
+            // Random offsets for 4 vertices
+            let baseIdx = vertices.length;
+            
+            for(let v=0; v<4; v++) {
+                let ox = (Math.random() - 0.5) * size * stretchX;
+                let oy = (Math.random() - 0.5) * size * stretchY;
+                let oz = (Math.random() - 0.5) * size * stretchZ;
+                vertices.push([x + ox, y + oy, z + oz]);
+            }
+            
+            // Add unconnected tet
+            indices.push([baseIdx, baseIdx+1, baseIdx+2, baseIdx+3]);
+        }
+    }
+}
+
+    function generateCluster() {
+        console.log("Generating Constructive Cluster Cloud...");
+        
+        // Configuration for the "Cloud Box"
+        // Clouds are usually wider than they are tall.
+        const sizeX = 4.0;
+        const sizeY = 1.0; // Flat
+        const sizeZ = 3.0;
+        
+        // Grid for "planting" seeds
+        // We scan a coarse grid in this box domain.
+        // FURTHER REDUCED gridStep to plant puffs much closer together (Dense packing)
+        const gridStep = 0.25; 
+        
+        const countX = Math.floor(sizeX / gridStep);
+        const countY = Math.floor(sizeY / gridStep);
+        const countZ = Math.floor(sizeZ / gridStep);
+        
+        // Base Puff Geometry: Simple low-poly sphere (IcoSphere - 1 subdivision or just base 12 verts)
+        const t = (1.0 + Math.sqrt(5.0)) / 2.0;
+        const baseVerts = [
+            [-1,  t,  0], [ 1,  t,  0], [-1, -t,  0], [ 1, -t,  0],
+            [ 0, -1,  t], [ 0,  1,  t], [ 0, -1, -t], [ 0,  1, -t],
+            [ t,  0, -1], [ t,  0,  1], [-t,  0, -1], [-t,  0,  1]
+        ].map(v => {
+            let l = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+            return [v[0]/l, v[1]/l, v[2]/l];
+        });
+
+        const faces = [
+            [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+            [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+            [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+            [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]
+        ];
+
+        console.log(`Scanning domain [${countX}x${countY}x${countZ}]...`);
+        let puffsPlanted = 0;
+
+        for (let x = 0; x < countX; x++) {
+            for (let y = 0; y < countY; y++) {
+                for (let z = 0; z < countZ; z++) {
+                    
+                    // ... (coordinates setup) ...
+                    // Normalized coordinates for Noise sampling
+                    let nx = (x / countX) * 2 - 1; 
+                    let ny = (y / countY) * 2 - 1;
+                    let nz = (z / countZ) * 2 - 1;
+                    
+                    let wx = (x * gridStep) - (sizeX * 0.5);
+                    let wy = (y * gridStep) - (sizeY * 0.5);
+                    let wz = (z * gridStep) - (sizeZ * 0.5);
+
+                    // 1. Noise Check (The "Shape Function")
+                    // Increase noise frequency slightly to get more small clumps
+                    let n = fbm(nx * 1.8, ny * 1.8, nz * 1.8);
+                    let dist = Math.sqrt(nx*nx*0.2 + ny*ny + nz*nz*0.2); 
+                    let density = n - (dist * 0.4); // Relaxed falloff
+                    
+                    // Even Lower threshold to fill volume
+                    if (density > -0.2) { 
+                        puffsPlanted++;
+                        
+                        // MASSIVE Scale: 2.0x to 3.0x grid spacing.
+                        // This guarantees deep interpenetration.
+                        let scale = (gridStep * 2.0) + (Math.random() * gridStep * 1.0);
+                        
+                        // Add Center Vertex for this Puff
+                        let centerIdx = vertices.length;
+                        vertices.push([wx, wy, wz]);
+                        
+                        // Add Surface Vertices
+                        let surfaceIndices = [];
+                        for(let i=0; i<12; i++) {
+                            let sv = baseVerts[i];
+                            // Apply simple rotation/jitter?
+                            // Just translation + scale for now.
+                            // Jitter the vertex slightly for irregularity
+                            let jx = (Math.random()-0.5) * 0.2;
+                            let jy = (Math.random()-0.5) * 0.2;
+                            let jz = (Math.random()-0.5) * 0.2;
+                            
+                            vertices.push([
+                                wx + (sv[0]+jx) * scale, 
+                                wy + (sv[1]+jy) * scale, 
+                                wz + (sv[2]+jz) * scale
+                            ]);
+                            surfaceIndices.push(centerIdx + 1 + i);
+                        }
+                        
+                        // Create 20 Tets connecting Surface Faces to Center
+                        for(const face of faces) {
+                            // Face is [v1, v2, v3] (indices into baseVerts 0..11)
+                            // We map them to our new vertices
+                            let i0 = centerIdx;
+                            let i1 = surfaceIndices[face[0]];
+                            let i2 = surfaceIndices[face[1]];
+                            let i3 = surfaceIndices[face[2]];
+                            
+                            indices.push([i0, i1, i2, i3]);
+                        }
+                    }
+                }
+            }
+        }
+        console.log(`Planted ${puffsPlanted} puffs.`);
+    }
+
+    function generateShell() {
+        console.log("Generating Hollow Shell Cloud...");
+        
+        // 1. Define Lobe Structures (The base shape)
+        const mainLobes = [];
+        const numLobes = 5; 
+        const rangeX = 3.0, rangeY = 0.5, rangeZ = 2.0;
+
+        for(let i=0; i<numLobes; i++) {
+            mainLobes.push({
+                x: (Math.random() - 0.5) * rangeX,
+                y: (Math.random() - 0.5) * rangeY,
+                z: (Math.random() - 0.5) * rangeZ,
+                r: 1.0 + Math.random() * 0.6 // Large radius
+            });
+        }
+        
+        // 2. Generate Surface Points
+        // We scan a Fibonacci Sphere for each lobe to get even distribution
+        const pointsOuter = [];
+        const samplesPerLobe = 800; 
+        
+        const goldenRatio = (1 + Math.sqrt(5)) / 2;
+        
+        for (let lobe of mainLobes) {
+            for (let i = 0; i < samplesPerLobe; i++) {
+                // Fibonacci Spiral on Sphere
+                let theta = 2 * Math.PI * i / goldenRatio;
+                let phi = Math.acos(1 - 2 * (i + 0.5) / samplesPerLobe);
+                
+                let nx = Math.cos(theta) * Math.sin(phi);
+                let ny = Math.cos(phi); // Y is up
+                let nz = Math.sin(theta) * Math.sin(phi);
+                
+                let px = lobe.x + nx * lobe.r;
+                let py = lobe.y + ny * lobe.r;
+                let pz = lobe.z + nz * lobe.r;
+                
+                // 3. Noise Mask (The Holes)
+                // Sample noise at this surface point
+                // Scale noise input to get medium-sized holes
+                let n = fbm(px * 0.8, py * 0.8, pz * 0.8);
+                
+                // If noise is low, skip this point (create a hole in the shell)
+                // Also check if this point is inside another lobe (union operation)
+                // If it's deeply inside another lobe, we might want to cull it to avoid internal walls,
+                // but for a "cloud", internal structure is okay. 
+                // Let's just do noise culling first.
+                if (n < 0.45) continue; // High threshold = big holes
+                
+                pointsOuter.push({pos: [px, py, pz], normal: [nx, ny, nz]});
+            }
+        }
+        
+        // 4. Create Inner Layer (The Crust)
+        // Thickness of the cloud shell
+        const thickness = 0.6; 
+        const allPoints = [];
+        
+        for (let i=0; i<pointsOuter.length; i++) {
+            let p = pointsOuter[i];
+            
+            // Outer point
+            // Add some jitter to break the perfect sphere surface
+            let j = (Math.random() - 0.5) * 0.1;
+            let pOut = [
+                p.pos[0] + p.normal[0] * j, 
+                p.pos[1] + p.normal[1] * j, 
+                p.pos[2] + p.normal[2] * j
+            ];
+            
+            // Inner point (move opposite to normal)
+            let pIn = [
+                p.pos[0] - p.normal[0] * thickness,
+                p.pos[1] - p.normal[1] * thickness,
+                p.pos[2] - p.normal[2] * thickness
+            ];
+            
+            // Register vertices
+            let idxOut = vertices.length;
+            vertices.push(pOut);
+            
+            let idxIn = vertices.length;
+            vertices.push(pIn);
+            
+            // Store indices for connection
+            allPoints.push({out: idxOut, in: idxIn, pos: pOut});
+        }
+        
+        console.log(`Generated ${allPoints.length} crust pairs.`);
+        
+        // 5. Connect the Crust
+        // We connect each "column" (Outer-Inner pair) to nearest neighbor columns.
+        
+        const k = 6; // Connect to 6 nearest surface neighbors
+        
+        // Distance helper
+        function distSq(idxA, idxB) {
+            let a = vertices[idxA];
+            let b = vertices[idxB];
+            let dx=a[0]-b[0], dy=a[1]-b[1], dz=a[2]-b[2];
+            return dx*dx + dy*dy + dz*dz;
+        }
+
+        // Spatial acceleration would be good here, but brute force for ~2000 points is fine (4M checks).
+        for (let i = 0; i < allPoints.length; i++) {
+            let colA = allPoints[i];
+            
+            // Find neighbors based on OUTER positions
+            let neighbors = [];
+            for (let j = 0; j < allPoints.length; j++) {
+                if (i===j) continue;
+                let d2 = distSq(colA.out, allPoints[j].out);
+                // Limit connection distance to avoid spanning holes
+                if (d2 < 0.6 * 0.6) {
+                    neighbors.push({idx: j, d2: d2});
+                }
+            }
+            neighbors.sort((a,b) => a.d2 - b.d2);
+            if (neighbors.length > k) neighbors.length = k;
+            
+            // Triangulate between Column A and Column B
+            // A_out, A_in, B_out, B_in
+            // We form a prism and split it into 3 tets.
+            
+            for (let n of neighbors) {
+                let colB = allPoints[n.idx];
+                
+                // To avoid duplicates (A-B and B-A), enforce index order
+                if (colA.out > colB.out) continue;
+                
+                // Form Prism: (A_out, B_out, A_in) and (B_out, B_in, A_in)?
+                // Or some other decomposition.
+                // 
+                // Tet 1: A_out, A_in, B_out, B_in 
+                // Wait, 4 points = 1 tet? Yes.
+                // But we want a "wall". 1 tet is thin.
+                // Ideally we want to fill the space between the two columns.
+                // A prism has 6 vertices. We only have 4 here (2 lines).
+                // Ah, we need a Triangle of columns to make a prism.
+                // But connecting pairwise is easier logic.
+                // Let's just form a tet between the two lines:
+                // T1: A_out, A_in, B_out, B_in 
+                indices.push([colA.out, colA.in, colB.out, colB.in]);
+                
+                // This creates a "ribbon" of tets. 
+                // It might leave gaps if not fully triangulated.
+                // Better: Connect A to B and C (triangle of neighbors).
+            }
+            
+            // Let's try the Triangle strategy for solidity
+            for (let x=0; x<neighbors.length; x++) {
+                for (let y=x+1; y<neighbors.length; y++) {
+                    let colB = allPoints[neighbors[x].idx];
+                    let colC = allPoints[neighbors[y].idx];
+                    
+                    // Check if B and C are connected (close)
+                    let dBC = distSq(colB.out, colC.out);
+                    if (dBC > 0.6 * 0.6) continue;
+                    
+                    // Enforce order to avoid overlapping tets from other iterations
+                    // (Only generate if A is the smallest index, for example)
+                    // Actually, simple way: only generate if i < n.idx
+                    // But here we have a triplet. i, n1, n2.
+                    // Enforce i < n1 < n2 ? No, that misses triangles where i is middle.
+                    // Let's just generate. Overlap is mostly fine for clouds (density adds up).
+                    // Or keep it simple: decimate heavily.
+                    
+                    if (Math.random() > 0.3) continue; // Keep 30%
+                    
+                    // We have a triangle of columns A, B, C.
+                    // We have 6 vertices: A_out, A_in, B_out, B_in, C_out, C_in.
+                    // Prism decomposition into 3 tets.
+                    
+                    // Indices
+                    let ao=colA.out, ai=colA.in;
+                    let bo=colB.out, bi=colB.in;
+                    let co=colC.out, ci=colC.in;
+                    
+                    // 1. ao, bo, co, ai (Top cap + connection to bottom)
+                    indices.push([ao, bo, co, ai]);
+                    
+                    // 2. bo, co, ai, bi (Middle skew)
+                    indices.push([bo, co, ai, bi]);
+                    
+                    // 3. co, ai, bi, ci (Bottom cap + connection)
+                    indices.push([co, ai, bi, ci]);
+                }
+            }
+        }
+        
+        console.log(`Generated Shell with ${indices.length} tets.`);
+    }
+
+// =============================================================================
+// MODE SELECTION
+// =============================================================================
+// Working modes:
+//   - 'soup'      : Disconnected tetrahedra shards. Good for scattered cloud look.
+//   - 'structure' : Connected warped grid. Good for solid organic shapes.
+//
+// Failed/Abandoned modes (commented out):
+//   - 'cluster'   : "Bag of marbles" - internal face artifacts, mirror-like lighting issues
+//   - 'skeleton'  : Too jagged/wireframe-like, can't smooth without exploding tet count
+//   - 'shell'     : Not watertight, sharp transitions at holes
+// =============================================================================
+
+if (CONFIG.mode === 'soup') {
+    generateSoup();
+} else if (CONFIG.mode === 'structure') {
+    generateStructure();
+} else if (CONFIG.mode === 'smooth') {
+    generateSmooth();
+// } else if (CONFIG.mode === 'cluster') {
+//     generateCluster();  // ABANDONED: "bag of marbles" artifacts
+// } else if (CONFIG.mode === 'skeleton') {
+//     generateSkeleton(); // ABANDONED: too jagged, can't smooth properly
+// } else if (CONFIG.mode === 'shell') {
+//     generateShell();    // ABANDONED: not watertight, sharp edges
+} else {
+    console.error(`Unknown mode: ${CONFIG.mode}. Valid modes: soup, structure, smooth`);
+    process.exit(1);
+}
+
+console.log(`Vertices: ${vertices.length}`);
+console.log(`Tetrahedra: ${indices.length}`);
+
+// --- Post-Processing: Jitter & Smooth ---
+// Breaks the blocky voxel grid appearance
+
+function jitterVertices(amount) {
+    console.log(`Jittering vertices by ${amount}...`);
+    for (let i = 0; i < vertices.length; i++) {
+        // Simple random offset
+        vertices[i][0] += (Math.random() - 0.5) * amount;
+        vertices[i][1] += (Math.random() - 0.5) * amount;
+        vertices[i][2] += (Math.random() - 0.5) * amount;
+    }
+}
+
+function smoothMesh(iterations, strength) {
+    console.log(`Smoothing mesh (${iterations} iters, strength ${strength})...`);
+    
+    // 1. Build Adjacency Graph
+    const neighbors = new Array(vertices.length).fill(null).map(() => new Set());
+    
+    for (const tet of indices) {
+        // Add all edges in the tet
+        // Edges: 0-1, 0-2, 0-3, 1-2, 1-3, 2-3
+        const edges = [[0,1], [0,2], [0,3], [1,2], [1,3], [2,3]];
+        for (const [a, b] of edges) {
+            neighbors[tet[a]].add(tet[b]);
+            neighbors[tet[b]].add(tet[a]);
+        }
+    }
+
+    // 2. Iterative Smoothing
+    for (let iter = 0; iter < iterations; iter++) {
+        const newPositions = vertices.map(v => [...v]); // Clone
+        
+        for (let i = 0; i < vertices.length; i++) {
+            const nbs = Array.from(neighbors[i]);
+            if (nbs.length === 0) continue;
+
+            let avgX = 0, avgY = 0, avgZ = 0;
+            for (const nbIdx of nbs) {
+                avgX += vertices[nbIdx][0];
+                avgY += vertices[nbIdx][1];
+                avgZ += vertices[nbIdx][2];
+            }
+            avgX /= nbs.length;
+            avgY /= nbs.length;
+            avgZ /= nbs.length;
+
+            // Lerp towards average
+            newPositions[i][0] += (avgX - vertices[i][0]) * strength;
+            newPositions[i][1] += (avgY - vertices[i][1]) * strength;
+            newPositions[i][2] += (avgZ - vertices[i][2]) * strength;
+        }
+        
+        // Update main array
+        for(let i=0; i<vertices.length; i++) {
+            vertices[i] = newPositions[i];
+        }
+    }
+}
+
+// Apply effects
+// Jitter amount: Default 0.6
+// DISABLE for smooth mode - surface is already smooth from subdivision
+if (CONFIG.jitter > 0 && CONFIG.mode !== 'smooth') {
+    jitterVertices(CONFIG.jitter);
+}
+
+// Smooth: Default 5 iterations, 0.6 strength
+// DISABLE for soup mode (shrinks isolated tets) and smooth mode (already smooth, destroys lobe detail)
+if (CONFIG.smoothIters > 0 && CONFIG.mode !== 'soup' && CONFIG.mode !== 'smooth') {
+    smoothMesh(CONFIG.smoothIters, CONFIG.smoothStr);
+}
+
+
+// --- Output Writer ---
+const stream = fs.createWriteStream(CONFIG.outputFile);
+stream.once('open', () => {
+    // Write Metadata Header
+    const timestamp = new Date().toISOString();
+    stream.write(`# CLOUD_GEN_METADATA\n`);
+    stream.write(`# generated=${timestamp}\n`);
+    stream.write(`# mode=${CONFIG.mode}\n`);
+    stream.write(`# shape=${CONFIG.shape}\n`);
+    stream.write(`# resolution=${CONFIG.resolution}\n`);
+    stream.write(`# threshold=${CONFIG.threshold}\n`);
+    stream.write(`# scale=${CONFIG.scale}\n`);
+    stream.write(`# octaves=${CONFIG.octaves}\n`);
+    stream.write(`# persistance=${CONFIG.persistance}\n`);
+    stream.write(`# lacunarity=${CONFIG.lacunarity}\n`);
+    stream.write(`# jitter=${CONFIG.jitter}\n`);
+    stream.write(`# smoothIters=${CONFIG.smoothIters}\n`);
+    stream.write(`# smoothStr=${CONFIG.smoothStr}\n`);
+    stream.write(`# vertices=${vertices.length}\n`);
+    stream.write(`# tetrahedra=${indices.length}\n`);
+    stream.write(`# END_METADATA\n`);
+
+    // Write Vertices
+    // Format: v x y z
+    for (const v of vertices) {
+        stream.write(`v ${v[0]} ${v[1]} ${v[2]}\n`);
+    }
+
+    // Write Indices
+    // Format: t i0 i1 i2 i3
+    for (const t of indices) {
+        stream.write(`t ${t[0]} ${t[1]} ${t[2]} ${t[3]}\n`);
+    }
+
+    stream.end();
+    console.log("Done.");
+});

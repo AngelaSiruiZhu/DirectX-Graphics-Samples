@@ -13,18 +13,44 @@
 #include <cstring>
 #include <stdexcept>
 #include <cfloat>
+#include <commdlg.h>
+#include <commctrl.h>
+#include <filesystem>
+#include "../../../../../MiniEngine/Model/json.hpp" 
+
+using json = nlohmann::json;
+#pragma comment(lib, "Comdlg32.lib")
+#pragma comment(lib, "Comctl32.lib")
 #undef min
 #undef max
 
 using DirectX::XMMatrixInverse;
 
+// Static instance pointer for GUI window proc
+IntervalShadingTetrahedron* IntervalShadingTetrahedron::s_instance = nullptr;
+
 namespace
 {
     const wchar_t* kTetPathCandidates[] = {
-        L"..\\..\\..\\..\\Assets\\IntervalShading\\bunny.vtk", // from bin/x64/Debug
+        L"..\\..\\Assets\\IntervalShading\\cloud_structure.vtk", // structure cloud
+        L"..\\..\\..\\Assets\\IntervalShading\\cloud_structure.vtk", // structure cloud (bin)
+        L"..\\..\\Assets\\IntervalShading\\cloud_shell.vtk", // shell cloud
+        L"..\\..\\..\\Assets\\IntervalShading\\cloud_shell.vtk", // shell cloud (bin)
+        L"..\\..\\Assets\\IntervalShading\\cloud_skeleton_sparse.vtk", // sparse skeleton
+        L"..\\..\\..\\Assets\\IntervalShading\\cloud_skeleton_sparse.vtk", // sparse skeleton (bin)
+        L"..\\..\\Assets\\IntervalShading\\cloud_skeleton_dense.vtk", // dense skeleton
+        L"..\\..\\..\\Assets\\IntervalShading\\cloud_skeleton_dense.vtk", // dense skeleton (bin)
+        L"..\\..\\Assets\\IntervalShading\\cloud_cluster_massive.vtk", // massive cluster
+        L"..\\..\\..\\Assets\\IntervalShading\\cloud_cluster_massive.vtk", // massive cluster (bin)
+        L"..\\..\\Assets\\IntervalShading\\bunny.vtk",        // from src folder
         L"..\\..\\..\\Assets\\IntervalShading\\bunny.vtk", // from bin/x64/Config
-        L"..\\Assets\\IntervalShading\\bunny.vtk",        // from src folder
-        L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\bunny.vtk" // absolute-ish from repo root
+        L"..\\..\\..\\..\\Assets\\IntervalShading\\bunny.vtk", // from bin/x64/Debug
+        L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\bunny.vtk", // absolute-ish from repo root
+        L"..\\..\\Assets\\IntervalShading\\cloud.vtk", // from bin (custom build)
+        L"..\\..\\..\\..\\Assets\\IntervalShading\\cloud.vtk", // from bin/x64/Debug
+        L"..\\..\\..\\Assets\\IntervalShading\\cloud.vtk", // from bin/x64/Config
+        L"..\\Assets\\IntervalShading\\cloud.vtk",        // from src folder
+        L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\cloud.vtk", // absolute-ish from repo root
     };
     constexpr float kDefaultDensity = 0.8f;
     constexpr float kNearPlane = 0.1f;
@@ -38,13 +64,35 @@ IntervalShadingTetrahedron::IntervalShadingTetrahedron(UINT width, UINT height, 
     m_srvDescriptorSize(0),
     m_rtvDescriptorSize(0),
     m_cbvDataBegin(nullptr),
-    m_cameraAngle(0.0f),
-    m_cameraElevation(0.35f),
-    m_cameraDistance(5.0f),
-    m_randomizeDrawOrder(false)
+    m_cameraPosX(0.0f),
+    m_cameraPosY(-20.0f),          // Below terrain (groundBaseHeight=5) to see it
+    m_cameraPosZ(-35.0f),          // Back from clouds
+    m_cameraYaw(0.0f),             // Looking forward (+Z)
+    m_cameraPitch(0.3f),           // Slightly up to see clouds
+    m_viewForward(0.0f, 0.0f, 1.0f),
+    m_viewRight(1.0f, 0.0f, 0.0f),
+    m_randomizeDrawOrder(false),
+    m_guiWindow(nullptr),
+    m_sliderClouds(nullptr),
+    m_sliderDrift(nullptr),
+    m_sliderDeform(nullptr),
+    m_sliderDensity(nullptr),
+    m_valueClouds(nullptr),
+    m_valueDrift(nullptr),
+    m_valueDeform(nullptr),
+    m_valueDensity(nullptr),
+    m_numCloudsVisible(25),
+    m_driftSpeed(0.27f),
+    m_deformAmount(0.48f),
+    m_cloudDensity(1.24f)
 {
+    s_instance = this;
     ZeroMemory(m_fenceValues, sizeof(m_fenceValues));
     ZeroMemory(&m_constantBufferData, sizeof(m_constantBufferData));
+    m_constantBufferData.DebugMode = 5; // Default to Volumetric Cloud
+    m_constantBufferData.LightDir = XMFLOAT3(0.5f, -0.8f, 0.2f); // Default sun-like direction
+    m_constantBufferData.WaveSpeedScale = 1.0f;
+    m_constantBufferData.WaveAmplitudeScale = 1.0f;
 }
 
 void IntervalShadingTetrahedron::OnInit()
@@ -190,23 +238,65 @@ void IntervalShadingTetrahedron::LoadPipeline()
 
 void IntervalShadingTetrahedron::LoadAssets()
 {
-    bool loaded = false;
-    for (auto path : kTetPathCandidates)
+    // Try to load scene.json first
+    std::wstring scenePath = L"Samples\\Desktop\\D3D12MeshShaders\\src\\Assets\\IntervalShading\\scene.json";
+    // Also try relative paths
+    if (!std::filesystem::exists(scenePath)) scenePath = L"..\\..\\Assets\\IntervalShading\\scene.json";
+    if (!std::filesystem::exists(scenePath)) scenePath = L"..\\..\\..\\..\\Assets\\IntervalShading\\scene.json";
+    
+    bool sceneLoaded = false;
+    if (std::filesystem::exists(scenePath))
     {
-        if (LoadTetrahedralMesh(path))
-        {
-            loaded = true;
-            break;
+        try {
+            LoadScene(scenePath);
+            sceneLoaded = true;
+        } catch (...) {
+            OutputDebugStringW(L"Failed to load scene.json, falling back to single mesh.\n");
         }
     }
-    if (!loaded)
+
+    if (!sceneLoaded)
     {
-        throw std::runtime_error("Unable to open tet mesh (checked bunny.vtk in expected locations).");
+        // Fallback to single mesh
+        MeshData md;
+        bool loaded = false;
+        for (auto path : kTetPathCandidates)
+        {
+            if (LoadTetrahedralMesh(path, md))
+            {
+                loaded = true;
+                break;
+            }
+        }
+        if (!loaded)
+        {
+            throw std::runtime_error("Unable to open tet mesh (checked candidates).");
+        }
+        
+        // Single object setup
+        m_vertices = md.Vertices;
+        m_tetIndices = md.Indices;
+        
+        SceneObject so;
+        so.MeshName = "Default";
+        so.WorldMatrix = m_modelMatrix; // Use the one calculated in LoadTet
+        so.IndexCount = static_cast<UINT>(m_tetIndices.size());
+        so.MeshIndex = 0;
+        so.Position = XMFLOAT3(0.0f, 0.0f, 0.0f);
+        so.WaveSpeedScale = 1.0f;
+        so.WaveAmplitudeScale = 1.0f;
+        m_sceneObjects.push_back(so);
     }
+
+    // Upload Geometry (merged from all objects)
+    UploadBuffer(&m_vertexBuffer, m_vertices.data(), m_vertices.size() * sizeof(XMFLOAT4));
+    UploadBuffer(&m_tetBuffer, m_tetIndices.data(), m_tetIndices.size() * sizeof(uint32_t));
+
     CreateIntervalTargets();
     CreateSrvHeap();
     BuildIntervalPipelineState();
     BuildCompositePipelineState();
+    BuildDebugPipelineState();
 
     // Create the command list (start closed).
     ThrowIfFailed(m_device->CreateCommandList(
@@ -220,7 +310,8 @@ void IntervalShadingTetrahedron::LoadAssets()
     // Constant buffer
     {
         m_cbStride = (sizeof(SceneConstantBuffer) + 255ull) & ~255ull;
-        const UINT64 constantBufferSize = m_cbStride * FrameCount;
+        // Allocate enough for 64 objects per frame
+        const UINT64 constantBufferSize = m_cbStride * FrameCount * 64; 
         CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
         CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(constantBufferSize);
         ThrowIfFailed(m_device->CreateCommittedResource(
@@ -254,6 +345,52 @@ void IntervalShadingTetrahedron::LoadAssets()
 
 void IntervalShadingTetrahedron::OnUpdate()
 {
+    // Get elapsed time for drift animation
+    static auto startTime = std::chrono::high_resolution_clock::now();
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float elapsedTime = std::chrono::duration<float>(currentTime - startTime).count();
+    
+    // Apply smooth drifting to clouds along world axes (back and forth)
+    // Use GUI drift speed parameter
+    float driftMultiplier = m_driftSpeed;
+    
+    for (size_t i = 0; i < m_sceneObjects.size(); i++)
+    {
+        auto& obj = m_sceneObjects[i];
+        
+        // Vary speed and amplitude for each cloud based on index
+        float speedVariation = (0.4f + (i % 3) * 0.075f) * driftMultiplier;  // Speeds scaled by GUI
+        // Amplitude now also scales with drift speed for visible movement
+        float baseAmp = 0.05f + (i % 3) * 0.02f;  // Much larger base amplitude
+        float ampVariation = baseAmp * driftMultiplier;  // Scale by GUI drift speed
+        
+        // Apply oscillating drift along Y-axis (back and forth motion)
+        float driftY = sinf(elapsedTime * speedVariation) * ampVariation;
+        
+        // Apply oscillating drift along X-axis (different phase)
+        float driftX = sinf(elapsedTime * speedVariation + 1.57f) * ampVariation;  // 90 degree phase shift
+        
+        // Apply oscillating drift along Z-axis (different phase)
+        float driftZ = sinf(elapsedTime * speedVariation + 3.14f) * ampVariation;  // 180 degree phase shift
+        
+        // Get the original world matrix and update translation
+        XMMATRIX world = XMLoadFloat4x4(&obj.WorldMatrix);
+        world = XMMatrixTranspose(world);  // Transpose back to world space
+        
+        XMVECTOR translation = world.r[3];
+        XMFLOAT3 pos;
+        XMStoreFloat3(&pos, translation);
+        
+        // Apply drift to all axes
+        pos.x += driftX;
+        pos.y += driftY;
+        pos.z += driftZ;
+        
+        // Rebuild matrix with drifted position
+        world.r[3] = XMVectorSet(pos.x, pos.y, pos.z, 1.0f);
+        XMStoreFloat4x4(&obj.WorldMatrix, XMMatrixTranspose(world));
+    }
+    
     UpdateConstants();
 }
 
@@ -315,7 +452,18 @@ void IntervalShadingTetrahedron::PopulateCommandList()
         m_commandList->SetPipelineState(m_intervalPipelineState.Get());
         m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
         m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
-        m_commandList->DispatchMesh((m_constantBufferData.TetCount + 15) / 16, 1, 1);
+        
+        // Dispatch per object - respect GUI number of clouds setting
+        int cloudsToRender = (std::min)(m_numCloudsVisible, (int)m_sceneObjects.size());
+        for (size_t i = 0; i < (size_t)cloudsToRender; ++i)
+        {
+            if (i >= 64) break;
+            UINT64 cbOffset = (m_frameIndex * 64 + i) * m_cbStride;
+            m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + cbOffset);
+            
+            UINT tetCount = m_sceneObjects[i].IndexCount / 4;
+            m_commandList->DispatchMesh((tetCount + 15) / 16, 1, 1);
+        }
 
         transitionIf(m_frontRT, m_frontState, shaderRead);
         transitionIf(m_backRT, m_backState, shaderRead);
@@ -338,18 +486,44 @@ void IntervalShadingTetrahedron::PopulateCommandList()
         CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
         m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
-        const float clearColor[] = { 0.0f, 1.0f, 0.0f, 1.0f };
+        const float clearColor[] = { 0.5f, 0.7f, 1.0f, 1.0f }; // Sky color
         m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
-        m_commandList->SetGraphicsRootSignature(m_compositeRootSignature.Get());
-        m_commandList->SetPipelineState(m_compositePipelineState.Get());
-        m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + m_cbStride * m_frameIndex);
-        // Front/back/optical are at SRV heap indices 2/3/4 (t2/t3/t4).
-        CD3DX12_GPU_DESCRIPTOR_HANDLE frontSrv(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), 2, m_srvDescriptorSize);
-        m_commandList->SetGraphicsRootDescriptorTable(1, frontSrv);
+        if (m_constantBufferData.DebugMode != 6)
+        {
+            m_commandList->SetGraphicsRootSignature(m_compositeRootSignature.Get());
+            m_commandList->SetPipelineState(m_compositePipelineState.Get());
+            // Use Object 0 constants for global view/proj/light
+            UINT64 cbOffset = (m_frameIndex * 64 + 0) * m_cbStride;
+            m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + cbOffset);
+            
+            // Front/back/optical are at SRV heap indices 2/3/4 (t2/t3/t4).
+            CD3DX12_GPU_DESCRIPTOR_HANDLE frontSrv(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), 2, m_srvDescriptorSize);
+            m_commandList->SetGraphicsRootDescriptorTable(1, frontSrv);
 
-        m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        m_commandList->DrawInstanced(3, 1, 0, 0);
+            m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            m_commandList->DrawInstanced(3, 1, 0, 0);
+        }
+
+        // Debug Pass: Wireframe Overlay
+        if (m_constantBufferData.DebugMode == 6)
+        {
+            m_commandList->SetPipelineState(m_debugPipelineState.Get());
+            m_commandList->SetGraphicsRootSignature(m_intervalRootSignature.Get());
+            
+            m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
+
+            int cloudsToRender = (std::min)(m_numCloudsVisible, (int)m_sceneObjects.size());
+            for (size_t i = 0; i < (size_t)cloudsToRender; ++i)
+            {
+                if (i >= 64) break;
+                UINT64 cbOffset = (m_frameIndex * 64 + i) * m_cbStride;
+                m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + cbOffset);
+                
+                UINT tetCount = m_sceneObjects[i].IndexCount / 4;
+                m_commandList->DispatchMesh((tetCount + 31) / 32, 1, 1);
+            }
+        }
 
         CD3DX12_RESOURCE_BARRIER toPresent = CD3DX12_RESOURCE_BARRIER::Transition(
             m_renderTargets[m_frameIndex].Get(),
@@ -369,46 +543,88 @@ void IntervalShadingTetrahedron::OnDestroy()
 
 void IntervalShadingTetrahedron::OnKeyDown(UINT8 key)
 {
-    const float rotationSpeed = 0.1f;
-    const float zoomSpeed = 0.5f;
-    
+    const float moveSpeed = 2.0f;
+    const float rotSpeed = 0.05f;
+
     switch (key)
     {
-    case '1': m_constantBufferData.DebugMode = 0; break; // front
-    case '2': m_constantBufferData.DebugMode = 1; break; // back
-    case '3': m_constantBufferData.DebugMode = 2; break; // length
-    case '4': m_constantBufferData.DebugMode = 3; break; // tau
-    case '5': m_constantBufferData.DebugMode = 4; break; // T
-    case '6': m_constantBufferData.DebugMode = 5; break; // fog/crystal
-    case 'R': case 'r':
-        ShuffleTets();
+    case '1': m_constantBufferData.DebugMode = 0; break;
+    case '2': m_constantBufferData.DebugMode = 1; break;
+    case '3': m_constantBufferData.DebugMode = 2; break;
+    case '4': m_constantBufferData.DebugMode = 3; break;
+    case '5': m_constantBufferData.DebugMode = 4; break;
+    case '6': m_constantBufferData.DebugMode = 5; break;
+    case '7': m_constantBufferData.DebugMode = 6; break;
+    case 'R': case 'r': ShuffleTets(); break;
+    case 'O': case 'o': OpenMeshFile(); break;
+    case 'G': case 'g':
+        // Toggle GUI window visibility
+        if (m_guiWindow)
+        {
+            if (IsWindowVisible(m_guiWindow))
+                ShowWindow(m_guiWindow, SW_HIDE);
+            else
+                ShowWindow(m_guiWindow, SW_SHOW);
+        }
         break;
 
-    case VK_LEFT:  m_cameraAngle -= rotationSpeed; break;
-    case VK_RIGHT: m_cameraAngle += rotationSpeed; break;
-    case VK_UP:    m_cameraElevation += rotationSpeed; break;
-    case VK_DOWN:  m_cameraElevation -= rotationSpeed; break;
-    case 'W': case 'w': m_cameraDistance = (std::max)(1.5f, m_cameraDistance - zoomSpeed); break;
-    case 'S': case 's': m_cameraDistance = (std::min)(15.0f, m_cameraDistance + zoomSpeed); break;
+    // WASD: Move using actual view vectors from the view matrix
+    case 'W': case 'w':
+        m_cameraPosX += m_viewForward.x * moveSpeed;
+        m_cameraPosY += m_viewForward.y * moveSpeed;
+        m_cameraPosZ += m_viewForward.z * moveSpeed;
+        break;
+    case 'S': case 's':
+        m_cameraPosX -= m_viewForward.x * moveSpeed;
+        m_cameraPosY -= m_viewForward.y * moveSpeed;
+        m_cameraPosZ -= m_viewForward.z * moveSpeed;
+        break;
+    case 'A': case 'a':
+        m_cameraPosX -= m_viewRight.x * moveSpeed;
+        m_cameraPosY -= m_viewRight.y * moveSpeed;
+        m_cameraPosZ -= m_viewRight.z * moveSpeed;
+        break;
+    case 'D': case 'd':
+        m_cameraPosX += m_viewRight.x * moveSpeed;
+        m_cameraPosY += m_viewRight.y * moveSpeed;
+        m_cameraPosZ += m_viewRight.z * moveSpeed;
+        break;
+
+    // Arrow keys: Look around (signs flipped)
+    case VK_LEFT:  m_cameraYaw -= rotSpeed; break;
+    case VK_RIGHT: m_cameraYaw += rotSpeed; break;
+    case VK_UP:    m_cameraPitch -= rotSpeed; break;
+    case VK_DOWN:  m_cameraPitch += rotSpeed; break;
     }
-    
-    // Keep angle in valid range
-    if (m_cameraAngle > XM_2PI)
-        m_cameraAngle -= XM_2PI;
-    if (m_cameraAngle < 0)
-        m_cameraAngle += XM_2PI;
-    
-    // Keep elevation in valid range (0 to 2PI) for seamless rotation
-    if (m_cameraElevation > XM_2PI)
-        m_cameraElevation -= XM_2PI;
-    if (m_cameraElevation < 0)
-        m_cameraElevation += XM_2PI;
+
+    // Clamp pitch to avoid gimbal lock
+    m_cameraPitch = (std::max)(-1.5f, (std::min)(1.5f, m_cameraPitch));
+
+    // Wrap yaw
+    const float TWO_PI = 6.283185f;
+    while (m_cameraYaw < 0.0f) m_cameraYaw += TWO_PI;
+    while (m_cameraYaw >= TWO_PI) m_cameraYaw -= TWO_PI;
 }
 
-bool IntervalShadingTetrahedron::LoadTetrahedralMesh(const std::wstring& path)
+// Helper to get time
+static double GetTime()
 {
-    m_vertices.clear();
-    m_tetIndices.clear();
+    static LARGE_INTEGER start = { 0 };
+    static LARGE_INTEGER freq = { 0 };
+    if (start.QuadPart == 0)
+    {
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&start);
+    }
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    return static_cast<double>(now.QuadPart - start.QuadPart) / freq.QuadPart;
+}
+
+bool IntervalShadingTetrahedron::LoadTetrahedralMesh(const std::wstring& path, MeshData& outMesh)
+{
+    outMesh.Vertices.clear();
+    outMesh.Indices.clear();
 
     std::ifstream file(path);
     if (!file.is_open())
@@ -427,51 +643,194 @@ bool IntervalShadingTetrahedron::LoadTetrahedralMesh(const std::wstring& path)
             std::stringstream ss(line.substr(2));
             float x, y, z;
             ss >> x >> y >> z;
-            m_vertices.push_back(XMFLOAT4(x, y, z, 1.0f));
+            outMesh.Vertices.push_back(XMFLOAT4(x, y, z, 1.0f));
         }
         else if (line[0] == 't' && line[1] == ' ')
         {
             std::stringstream ss(line.substr(2));
-            uint32_t a, b, c, d;
-            ss >> a >> b >> c >> d;
-            m_tetIndices.push_back(a);
-            m_tetIndices.push_back(b);
-            m_tetIndices.push_back(c);
-            m_tetIndices.push_back(d);
+            uint32_t i0, i1, i2, i3;
+            ss >> i0 >> i1 >> i2 >> i3;
+            outMesh.Indices.push_back(i0);
+            outMesh.Indices.push_back(i1);
+            outMesh.Indices.push_back(i2);
+            outMesh.Indices.push_back(i3);
+        }
+    }
+    
+    // Scale normalization (Optional, maybe skip for scene composition?)
+    // Let's keep it to ensure consistent unit size, then scale via WorldMatrix.
+    if (outMesh.Vertices.empty()) return false;
+
+    XMVECTOR minV = XMLoadFloat4(&outMesh.Vertices[0]);
+    XMVECTOR maxV = minV;
+
+    for (const auto& v : outMesh.Vertices)
+    {
+        XMVECTOR vec = XMLoadFloat4(&v);
+        minV = XMVectorMin(minV, vec);
+        maxV = XMVectorMax(maxV, vec);
+    }
+
+    XMVECTOR center = (minV + maxV) * 0.5f;
+    XMVECTOR extent = maxV - minV;
+    XMFLOAT3 size;
+    XMStoreFloat3(&size, extent);
+    float maxExtent = (std::max)(size.x, (std::max)(size.y, size.z));
+    float scale = (maxExtent > 0.0001f) ? (2.0f / maxExtent) : 1.0f; // Normalize to radius ~1
+
+    // Bake normalization transform? 
+    // Yes, bake it so all meshes are roughly unit size, then SceneObject.WorldMatrix handles placement.
+    XMMATRIX transform = XMMatrixTranslationFromVector(-center) * XMMatrixScaling(scale, scale, scale);
+    
+    for(auto& v : outMesh.Vertices)
+    {
+        XMVECTOR vec = XMLoadFloat4(&v);
+        vec = XMVector3TransformCoord(vec, transform);
+        // Reset W to 1.0 just in case
+        XMStoreFloat4(&v, vec);
+        v.w = 1.0f;
+    }
+
+    return true;
+}
+
+// Debug Logger
+void LogDebug(const std::string& msg) {
+    std::ofstream log("debug_log.txt", std::ios::app);
+    log << msg << std::endl;
+    OutputDebugStringA((msg + "\n").c_str());
+}
+
+void IntervalShadingTetrahedron::LoadScene(const std::wstring& scenePath)
+{
+    LogDebug("Attempting to load scene from: " + std::string(scenePath.begin(), scenePath.end()));
+    std::ifstream file(scenePath);
+    if (!file.is_open())
+    {
+        LogDebug("Failed to open scene file.");
+        throw std::runtime_error("Could not open scene.json");
+    }
+    
+    json j;
+    file >> j;
+    
+    // Light loading (already done in previous steps if kept, otherwise ignore for now)
+    if (j.contains("light"))
+    {
+        auto& l = j["light"];
+        auto& d = l["direction"];
+        m_constantBufferData.LightDir = XMFLOAT3(d[0], d[1], d[2]);
+    }
+    
+    // Cache for loaded meshes
+    std::map<std::string, MeshData> meshCache;
+    m_vertices.clear();
+    m_tetIndices.clear();
+    m_sceneObjects.clear();
+    const XMFLOAT3 lightAnchor(0.0f, -15.0f, 0.0f);
+    size_t closestObjectIndex = SIZE_MAX;
+    float closestDistanceSq = std::numeric_limits<float>::max();
+    
+    if (j.contains("objects"))
+    {
+        for (const auto& obj : j["objects"])
+        {
+            std::string meshName = obj["mesh"];
+            LogDebug("Found object with mesh: " + meshName);
+            
+            // Load Mesh if not cached
+            if (meshCache.find(meshName) == meshCache.end())
+            {
+                // Convert string to wstring path
+                // Assume assets folder relative
+                std::filesystem::path p(scenePath);
+                p.replace_filename(meshName);
+                
+                LogDebug("Loading mesh from: " + p.string());
+                
+                MeshData md;
+                if (!LoadTetrahedralMesh(p.wstring(), md))
+                {
+                    LogDebug("Failed to load mesh: " + meshName);
+                    continue; 
+                }
+                LogDebug("Loaded mesh. Vertices: " + std::to_string(md.Vertices.size()));
+                meshCache[meshName] = md;
+            }
+            
+            MeshData& md = meshCache[meshName];
+            
+            // Create Scene Object
+            SceneObject so;
+            so.MeshName = meshName;
+            
+            // Merge into Global Buffers
+            size_t vertexOffset = m_vertices.size();
+            size_t indexOffset = m_tetIndices.size(); // This is in uints (tets * 4)
+            
+            // Append Vertices
+            m_vertices.insert(m_vertices.end(), md.Vertices.begin(), md.Vertices.end());
+            
+            // Append Indices (re-indexed)
+            for(auto idx : md.Indices)
+            {
+                m_tetIndices.push_back(static_cast<uint32_t>(idx + vertexOffset));
+            }
+            
+            // Transform
+            auto& pos = obj["position"];
+            auto& rot = obj["rotation"];
+            auto& scl = obj["scale"];
+            
+            // Adjust Y position to be around same height as highest cloud (Y = -9.5) with variations
+            float baseHeight = -9.5f;
+            float heightVariation = static_cast<float>((m_sceneObjects.size() % 3)) * 0.5f;  // 0.0, 0.5, 1.0
+            float adjustedY = baseHeight + heightVariation - 0.5f;  // Range: -10.0 to -9.0
+            
+            XMMATRIX m = XMMatrixScaling(scl[0], scl[1], scl[2]) * 
+                         XMMatrixRotationRollPitchYaw(rot[0], rot[1], rot[2]) *
+                         XMMatrixTranslation(pos[0], adjustedY, pos[2]);
+            
+            XMStoreFloat4x4(&so.WorldMatrix, XMMatrixTranspose(m));
+            so.IndexCount = static_cast<UINT>(md.Indices.size());
+            so.MeshIndex = indexOffset; // Start index in global buffer
+            so.Position = XMFLOAT3(pos[0], adjustedY, pos[2]);
+            so.WaveSpeedScale = 1.0f;
+            so.WaveAmplitudeScale = 1.0f;
+            
+            m_sceneObjects.push_back(so);
+            size_t newIndex = m_sceneObjects.size() - 1;
+            float dx = so.Position.x - lightAnchor.x;
+            float dy = so.Position.y - lightAnchor.y;
+            float dz = so.Position.z - lightAnchor.z;
+            float distSq = dx * dx + dy * dy + dz * dz;
+            if (distSq < closestDistanceSq)
+            {
+                closestDistanceSq = distSq;
+                closestObjectIndex = newIndex;
+            }
+            LogDebug("Added SceneObject. Total objects: " + std::to_string(m_sceneObjects.size()));
         }
     }
 
-    if (m_vertices.empty() || m_tetIndices.empty())
+    if (closestObjectIndex != SIZE_MAX && closestObjectIndex < m_sceneObjects.size())
     {
-        return false;
+        m_sceneObjects[closestObjectIndex].WaveSpeedScale = 0.25f;
+        m_sceneObjects[closestObjectIndex].WaveAmplitudeScale = 0.5f;
     }
-
-    UploadBuffer(m_vertexBuffer.GetAddressOf(), m_vertices.data(), m_vertices.size() * sizeof(XMFLOAT4));
-    UploadBuffer(m_tetBuffer.GetAddressOf(), m_tetIndices.data(), m_tetIndices.size() * sizeof(uint32_t));
-
-    CD3DX12_RANGE range(0, 0);
-    ThrowIfFailed(m_tetBuffer->Map(0, &range, reinterpret_cast<void**>(&m_tetBufferMapped)));
-
-    // Build a centering/scaling model matrix so meshes land near the origin at a reasonable scale.
-    XMFLOAT3 minP(FLT_MAX, FLT_MAX, FLT_MAX);
-    XMFLOAT3 maxP(-FLT_MAX, -FLT_MAX, -FLT_MAX);
-    for (auto& v : m_vertices)
+    
+    // Update Camera if present
+    if (j.contains("camera"))
     {
-        minP.x = (std::min)(minP.x, v.x); minP.y = (std::min)(minP.y, v.y); minP.z = (std::min)(minP.z, v.z);
-        maxP.x = (std::max)(maxP.x, v.x); maxP.y = (std::max)(maxP.y, v.y); maxP.z = (std::max)(maxP.z, v.z);
+        auto& c = j["camera"];
+        auto& p = c["position"];
+        // Update m_cameraDistance etc? 
+        // The sample uses Orbit camera (Angle/Elevation).
+        // Converting arbitrary pos to spherical is annoying.
+        // Let's just set the camera pos directly for initial view if possible, 
+        // or just accept defaults. 
+        // For now, let's ignore camera from JSON to keep orbit controls simple.
     }
-    XMVECTOR minV = XMLoadFloat3(&minP);
-    XMVECTOR maxV = XMLoadFloat3(&maxP);
-    XMVECTOR center = 0.5f * (minV + maxV);
-
-    XMFLOAT3 size;
-    XMStoreFloat3(&size, maxV - minV);
-    float maxExtent = (std::max)(size.x, (std::max)(size.y, size.z));
-    float scale = (maxExtent > 0.0001f) ? (1.5f / maxExtent) : 1.0f;
-
-    XMMATRIX model = XMMatrixScaling(scale, scale, scale) * XMMatrixTranslationFromVector(-center);
-    XMStoreFloat4x4(&m_modelMatrix, XMMatrixTranspose(model));
-    return true;
 }
 
 void IntervalShadingTetrahedron::CreateIntervalTargets()
@@ -656,7 +1015,7 @@ void IntervalShadingTetrahedron::BuildIntervalPipelineState()
     psoStream.RasterizerState = rasterizer;
     psoStream.DepthStencilState = depth;
     psoStream.RTVFormats = rtvFormats;
-    psoStream.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    psoStream.DSVFormat = DXGI_FORMAT_UNKNOWN;
     psoStream.SampleDesc = DefaultSampleDesc();
     psoStream.SampleMask = UINT_MAX;
 
@@ -733,6 +1092,58 @@ void IntervalShadingTetrahedron::BuildCompositePipelineState()
     ThrowIfFailed(m_device->CreatePipelineState(&streamDesc, IID_PPV_ARGS(&m_compositePipelineState)));
 }
 
+void IntervalShadingTetrahedron::BuildDebugPipelineState()
+{
+    std::vector<BYTE> meshShader = ReadData(L"DebugMeshMS.cso");
+    std::vector<BYTE> pixelShader = ReadData(L"DebugMeshPS.cso");
+
+    D3D12_PIPELINE_STATE_STREAM_DESC psoDesc = {};
+    struct PSO_STREAM
+    {
+        CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
+        CD3DX12_PIPELINE_STATE_STREAM_MS MS;
+        CD3DX12_PIPELINE_STATE_STREAM_PS PS;
+        CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER RasterizerState;
+        CD3DX12_PIPELINE_STATE_STREAM_BLEND_DESC BlendState;
+        CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL DepthStencilState;
+        CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+    } stream;
+
+    stream.pRootSignature = m_intervalRootSignature.Get();
+    stream.MS = CD3DX12_SHADER_BYTECODE(meshShader.data(), meshShader.size());
+    stream.PS = CD3DX12_SHADER_BYTECODE(pixelShader.data(), pixelShader.size());
+
+    CD3DX12_RASTERIZER_DESC rasterizer(D3D12_DEFAULT);
+    rasterizer.CullMode = D3D12_CULL_MODE_NONE;
+    rasterizer.FillMode = D3D12_FILL_MODE_WIREFRAME;
+    stream.RasterizerState = rasterizer;
+
+    CD3DX12_BLEND_DESC blend(D3D12_DEFAULT);
+    blend.RenderTarget[0].BlendEnable = TRUE;
+    blend.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+    blend.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+    blend.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+    blend.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+    blend.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+    blend.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    blend.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+    stream.BlendState = blend;
+
+    CD3DX12_DEPTH_STENCIL_DESC depth(D3D12_DEFAULT);
+    depth.DepthEnable = FALSE;
+    stream.DepthStencilState = depth;
+
+    D3D12_RT_FORMAT_ARRAY rtvFormats = {};
+    rtvFormats.NumRenderTargets = 1;
+    rtvFormats.RTFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    stream.RTVFormats = rtvFormats;
+
+    psoDesc.pPipelineStateSubobjectStream = &stream;
+    psoDesc.SizeInBytes = sizeof(stream);
+
+    ThrowIfFailed(m_device->CreatePipelineState(&psoDesc, IID_PPV_ARGS(&m_debugPipelineState)));
+}
+
 void IntervalShadingTetrahedron::UploadBuffer(ID3D12Resource** destination, const void* data, size_t byteSize)
 {
     CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_UPLOAD);
@@ -754,25 +1165,32 @@ void IntervalShadingTetrahedron::UploadBuffer(ID3D12Resource** destination, cons
 
 void IntervalShadingTetrahedron::UpdateConstants()
 {
-    float y = m_cameraDistance * sinf(m_cameraElevation);
-    float r = m_cameraDistance * cosf(m_cameraElevation);
-    float x = r * cosf(m_cameraAngle);
-    float z = r * sinf(m_cameraAngle);
+    // Free-fly camera: position + yaw/pitch rotation
+    XMVECTOR cameraPos = XMVectorSet(m_cameraPosX, m_cameraPosY, m_cameraPosZ, 1.0f);
 
-    XMVECTOR cameraPos = XMVectorSet(x, y, z, 1.0f);
-    XMVECTOR target = XMVectorZero();
+    // Calculate forward direction from yaw (horizontal) and pitch (vertical)
+    float cosPitch = cosf(m_cameraPitch);
+    float forwardX = sinf(m_cameraYaw) * cosPitch;
+    float forwardY = sinf(m_cameraPitch);
+    float forwardZ = cosf(m_cameraYaw) * cosPitch;
+
+    XMVECTOR forward = XMVectorSet(forwardX, forwardY, forwardZ, 0.0f);
+    XMVECTOR target = XMVectorAdd(cameraPos, forward);
     XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-
-    if (cosf(m_cameraElevation) < 0.0f)
-    {
-        up = XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f);
-    }
 
     XMMATRIX model = XMMatrixIdentity();
     XMMATRIX view = XMMatrixLookAtLH(cameraPos, target, up);
-    XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV4, m_aspectRatio, kNearPlane, 100.0f);
+    XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV4, m_aspectRatio, kNearPlane, 500.0f);
     XMMATRIX viewProj = view * proj;
     XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
+
+    // Extract camera axes from inverse view matrix for movement
+    XMMATRIX invView = XMMatrixInverse(nullptr, view);
+    XMFLOAT4X4 invViewF;
+    XMStoreFloat4x4(&invViewF, invView);
+    // Row 0 = Right, Row 1 = Up, Row 2 = Forward (in world space)
+    m_viewRight = XMFLOAT3(invViewF._11, invViewF._12, invViewF._13);
+    m_viewForward = XMFLOAT3(invViewF._31, invViewF._32, invViewF._33);
 
     m_constantBufferData.Model = m_modelMatrix;
     XMStoreFloat4x4(&m_constantBufferData.View, XMMatrixTranspose(view));
@@ -780,11 +1198,31 @@ void IntervalShadingTetrahedron::UpdateConstants()
     XMStoreFloat4x4(&m_constantBufferData.ViewProj, XMMatrixTranspose(viewProj));
     XMStoreFloat4x4(&m_constantBufferData.InvViewProj, XMMatrixTranspose(invViewProj));
     m_constantBufferData.NearPlane = kNearPlane;
-    m_constantBufferData.Density = kDefaultDensity;
-    m_constantBufferData.TetCount = static_cast<uint32_t>(m_tetIndices.size() / 4);
+    m_constantBufferData.Density = m_cloudDensity;  // Use GUI density
+    // m_constantBufferData.TetCount = ... // Per object
     m_constantBufferData.RandomizeOrder = m_randomizeDrawOrder ? 1u : 0u;
+    XMStoreFloat3(&m_constantBufferData.CameraPos, cameraPos);
+    m_constantBufferData.Time = static_cast<float>(GetTime());
 
-    std::memcpy(m_cbvDataBegin + m_cbStride * m_frameIndex, &m_constantBufferData, sizeof(m_constantBufferData));
+    XMVECTOR lightDir = XMVector3Normalize(XMLoadFloat3(&m_constantBufferData.LightDir));
+    XMStoreFloat3(&m_constantBufferData.LightDir, lightDir);
+
+    // Loop through objects and update CB
+    UINT objIndex = 0;
+    for (const auto& obj : m_sceneObjects)
+    {
+        if (objIndex >= 64) break;
+        
+        m_constantBufferData.Model = obj.WorldMatrix;
+        m_constantBufferData.TetCount = obj.IndexCount / 4;
+        m_constantBufferData.WaveSpeedScale = obj.WaveSpeedScale * m_deformAmount;  // Scale by GUI deformation
+        m_constantBufferData.TetOffset = static_cast<uint32_t>(obj.MeshIndex); // Index buffer offset
+        m_constantBufferData.WaveAmplitudeScale = obj.WaveAmplitudeScale * m_deformAmount;  // Scale by GUI deformation
+        
+        UINT64 offset = (m_frameIndex * 64 + objIndex) * m_cbStride;
+        std::memcpy(m_cbvDataBegin + offset, &m_constantBufferData, sizeof(m_constantBufferData));
+        objIndex++;
+    }
 }
 
 void IntervalShadingTetrahedron::MoveToNextFrame()
@@ -852,4 +1290,235 @@ void IntervalShadingTetrahedron::ShuffleTets()
         shuffled[dst + 3] = m_tetIndices[src + 3];
     }
     std::memcpy(m_tetBufferMapped, shuffled.data(), shuffled.size() * sizeof(uint32_t));
+}
+
+void IntervalShadingTetrahedron::OpenMeshFile()
+{
+    WCHAR filename[MAX_PATH];
+    filename[0] = 0;
+
+    OPENFILENAMEW ofn;
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = Win32Application::GetHwnd();
+    ofn.lpstrFilter = L"VTK Files\0*.vtk\0All Files\0*.*\0";
+    ofn.lpstrFile = filename;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrTitle = L"Select Tetrahedral Mesh";
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+
+    // Show cursor for the dialog
+    while (ShowCursor(TRUE) < 0);
+
+    if (GetOpenFileNameW(&ofn))
+    {
+        WaitForGpu();
+        MeshData md;
+        if (LoadTetrahedralMesh(filename, md))
+        {
+            // Reset Scene to single object
+            m_vertices = md.Vertices;
+            m_tetIndices = md.Indices;
+            
+            m_sceneObjects.clear();
+            SceneObject so;
+            so.MeshName = "UserSelected";
+            so.WorldMatrix = m_modelMatrix;
+            so.IndexCount = static_cast<UINT>(m_tetIndices.size());
+            so.MeshIndex = 0;
+            so.Position = XMFLOAT3(0.0f, 0.0f, 0.0f);
+            so.WaveSpeedScale = 1.0f;
+            m_sceneObjects.push_back(so);
+
+            // Re-upload buffers to GPU (required after loading new mesh!)
+            UploadBuffer(&m_vertexBuffer, m_vertices.data(), m_vertices.size() * sizeof(XMFLOAT4));
+            UploadBuffer(&m_tetBuffer, m_tetIndices.data(), m_tetIndices.size() * sizeof(uint32_t));
+
+            CreateSrvHeap();
+            UpdateConstants();
+        }
+    }
+
+    // Hide cursor again if needed (assuming the app wants it hidden, though this sample seems to use a default cursor)
+    // Actually, DXSample usually keeps the cursor visible unless in a specific mode. 
+    // But if it was sluggish, forcing it shown ensures it's available.
+    // We'll balance the ShowCursor(TRUE) with a FALSE.
+    ShowCursor(FALSE);
+}
+
+// GUI Window Procedure
+LRESULT CALLBACK IntervalShadingTetrahedron::GUIWindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    if (!s_instance) return DefWindowProc(hWnd, message, wParam, lParam);
+    
+    switch (message)
+    {
+    case WM_HSCROLL:
+    {
+        HWND slider = (HWND)lParam;
+        int pos = (int)SendMessage(slider, TBM_GETPOS, 0, 0);
+        
+        if (slider == s_instance->m_sliderClouds)
+        {
+            s_instance->m_numCloudsVisible = pos;
+            wchar_t buf[32];
+            swprintf_s(buf, L"%d", pos);
+            SetWindowText(s_instance->m_valueClouds, buf);
+        }
+        else if (slider == s_instance->m_sliderDrift)
+        {
+            s_instance->m_driftSpeed = pos / 100.0f;
+            wchar_t buf[32];
+            swprintf_s(buf, L"%.2f", s_instance->m_driftSpeed);
+            SetWindowText(s_instance->m_valueDrift, buf);
+        }
+        else if (slider == s_instance->m_sliderDeform)
+        {
+            s_instance->m_deformAmount = pos / 100.0f;
+            wchar_t buf[32];
+            swprintf_s(buf, L"%.2f", s_instance->m_deformAmount);
+            SetWindowText(s_instance->m_valueDeform, buf);
+        }
+        else if (slider == s_instance->m_sliderDensity)
+        {
+            s_instance->m_cloudDensity = pos / 100.0f;
+            wchar_t buf[32];
+            swprintf_s(buf, L"%.2f", s_instance->m_cloudDensity);
+            SetWindowText(s_instance->m_valueDensity, buf);
+        }
+        return 0;
+    }
+    case WM_CLOSE:
+        // Don't destroy, just hide
+        ShowWindow(hWnd, SW_HIDE);
+        return 0;
+    case WM_DESTROY:
+        return 0;
+    }
+    return DefWindowProc(hWnd, message, wParam, lParam);
+}
+
+void IntervalShadingTetrahedron::CreateGUIWindow(HINSTANCE hInstance)
+{
+    // Initialize common controls
+    INITCOMMONCONTROLSEX icex;
+    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
+    icex.dwICC = ICC_BAR_CLASSES;
+    InitCommonControlsEx(&icex);
+    
+    // Register GUI window class
+    WNDCLASSEX wcGUI = { 0 };
+    wcGUI.cbSize = sizeof(WNDCLASSEX);
+    wcGUI.style = CS_HREDRAW | CS_VREDRAW;
+    wcGUI.lpfnWndProc = GUIWindowProc;
+    wcGUI.hInstance = hInstance;
+    wcGUI.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wcGUI.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wcGUI.lpszClassName = L"CloudGUIClass";
+    RegisterClassEx(&wcGUI);
+    
+    // Create GUI window
+    int guiWidth = 320;
+    int guiHeight = 300;
+    
+    m_guiWindow = CreateWindowEx(
+        WS_EX_TOPMOST,
+        L"CloudGUIClass",
+        L"Cloud Controls",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+        CW_USEDEFAULT, CW_USEDEFAULT,
+        guiWidth, guiHeight,
+        nullptr,
+        nullptr,
+        hInstance,
+        nullptr);
+    
+    int yPos = 15;
+    int labelWidth = 100;
+    int sliderWidth = 140;
+    int valueWidth = 50;
+    int height = 25;
+    int spacing = 45;
+    
+    // Number of Clouds
+    CreateWindow(L"STATIC", L"Clouds:", WS_CHILD | WS_VISIBLE,
+        10, yPos, labelWidth, height, m_guiWindow, (HMENU)IDC_LABEL_CLOUDS, hInstance, nullptr);
+    m_sliderClouds = CreateWindow(TRACKBAR_CLASS, L"",
+        WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_AUTOTICKS,
+        labelWidth + 15, yPos, sliderWidth, height, m_guiWindow, (HMENU)IDC_SLIDER_CLOUDS, hInstance, nullptr);
+    SendMessage(m_sliderClouds, TBM_SETRANGE, TRUE, MAKELONG(1, 25));
+    SendMessage(m_sliderClouds, TBM_SETPOS, TRUE, m_numCloudsVisible);
+    m_valueClouds = CreateWindow(L"STATIC", L"25", WS_CHILD | WS_VISIBLE,
+        labelWidth + sliderWidth + 20, yPos, valueWidth, height, m_guiWindow, (HMENU)IDC_VALUE_CLOUDS, hInstance, nullptr);
+    
+    yPos += spacing;
+    
+    // Drift Speed
+    CreateWindow(L"STATIC", L"Drift Speed:", WS_CHILD | WS_VISIBLE,
+        10, yPos, labelWidth, height, m_guiWindow, (HMENU)IDC_LABEL_DRIFT, hInstance, nullptr);
+    m_sliderDrift = CreateWindow(TRACKBAR_CLASS, L"",
+        WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_AUTOTICKS,
+        labelWidth + 15, yPos, sliderWidth, height, m_guiWindow, (HMENU)IDC_SLIDER_DRIFT, hInstance, nullptr);
+    SendMessage(m_sliderDrift, TBM_SETRANGE, TRUE, MAKELONG(0, 1000));
+    SendMessage(m_sliderDrift, TBM_SETPOS, TRUE, (int)(m_driftSpeed * 100));
+    m_valueDrift = CreateWindow(L"STATIC", L"0.27", WS_CHILD | WS_VISIBLE,
+        labelWidth + sliderWidth + 20, yPos, valueWidth, height, m_guiWindow, (HMENU)IDC_VALUE_DRIFT, hInstance, nullptr);
+    
+    yPos += spacing;
+    
+    // Deformation Amount
+    CreateWindow(L"STATIC", L"Deformation:", WS_CHILD | WS_VISIBLE,
+        10, yPos, labelWidth, height, m_guiWindow, (HMENU)IDC_LABEL_DEFORM, hInstance, nullptr);
+    m_sliderDeform = CreateWindow(TRACKBAR_CLASS, L"",
+        WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_AUTOTICKS,
+        labelWidth + 15, yPos, sliderWidth, height, m_guiWindow, (HMENU)IDC_SLIDER_DEFORM, hInstance, nullptr);
+    SendMessage(m_sliderDeform, TBM_SETRANGE, TRUE, MAKELONG(0, 300));
+    SendMessage(m_sliderDeform, TBM_SETPOS, TRUE, (int)(m_deformAmount * 100));
+    m_valueDeform = CreateWindow(L"STATIC", L"0.48", WS_CHILD | WS_VISIBLE,
+        labelWidth + sliderWidth + 20, yPos, valueWidth, height, m_guiWindow, (HMENU)IDC_VALUE_DEFORM, hInstance, nullptr);
+    
+    yPos += spacing;
+    
+    // Cloud Density
+    CreateWindow(L"STATIC", L"Density:", WS_CHILD | WS_VISIBLE,
+        10, yPos, labelWidth, height, m_guiWindow, (HMENU)IDC_LABEL_DENSITY, hInstance, nullptr);
+    m_sliderDensity = CreateWindow(TRACKBAR_CLASS, L"",
+        WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_AUTOTICKS,
+        labelWidth + 15, yPos, sliderWidth, height, m_guiWindow, (HMENU)IDC_SLIDER_DENSITY, hInstance, nullptr);
+    SendMessage(m_sliderDensity, TBM_SETRANGE, TRUE, MAKELONG(10, 200));
+    SendMessage(m_sliderDensity, TBM_SETPOS, TRUE, (int)(m_cloudDensity * 100));
+    m_valueDensity = CreateWindow(L"STATIC", L"1.24", WS_CHILD | WS_VISIBLE,
+        labelWidth + sliderWidth + 20, yPos, valueWidth, height, m_guiWindow, (HMENU)IDC_VALUE_DENSITY, hInstance, nullptr);
+    
+    yPos += spacing + 10;
+    
+    // Instructions
+    CreateWindow(L"STATIC", L"Press 'G' to toggle this window", WS_CHILD | WS_VISIBLE | SS_CENTER,
+        10, yPos, guiWidth - 40, height, m_guiWindow, nullptr, hInstance, nullptr);
+    
+    ShowWindow(m_guiWindow, SW_SHOW);
+    UpdateWindow(m_guiWindow);
+}
+
+void IntervalShadingTetrahedron::UpdateGUIValues()
+{
+    if (!m_guiWindow) return;
+    
+    wchar_t buf[32];
+    
+    swprintf_s(buf, L"%d", m_numCloudsVisible);
+    SetWindowText(m_valueClouds, buf);
+    SendMessage(m_sliderClouds, TBM_SETPOS, TRUE, m_numCloudsVisible);
+    
+    swprintf_s(buf, L"%.2f", m_driftSpeed);
+    SetWindowText(m_valueDrift, buf);
+    SendMessage(m_sliderDrift, TBM_SETPOS, TRUE, (int)(m_driftSpeed * 100));
+    
+    swprintf_s(buf, L"%.2f", m_deformAmount);
+    SetWindowText(m_valueDeform, buf);
+    SendMessage(m_sliderDeform, TBM_SETPOS, TRUE, (int)(m_deformAmount * 100));
+    
+    swprintf_s(buf, L"%.2f", m_cloudDensity);
+    SetWindowText(m_valueDensity, buf);
+    SendMessage(m_sliderDensity, TBM_SETPOS, TRUE, (int)(m_cloudDensity * 100));
 }

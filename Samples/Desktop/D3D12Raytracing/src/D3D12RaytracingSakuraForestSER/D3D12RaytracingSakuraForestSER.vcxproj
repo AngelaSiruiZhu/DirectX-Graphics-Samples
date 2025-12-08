@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="..\..\..\..\..\Packages\Microsoft.Direct3D.D3D12.1.717.0-preview\build\native\Microsoft.Direct3D.D3D12.props" Condition="Exists('..\..\..\..\..\Packages\Microsoft.Direct3D.D3D12.1.717.0-preview\build\native\Microsoft.Direct3D.D3D12.props')" />
   <Import Project="..\..\..\..\..\Packages\Microsoft.Direct3D.DXC.1.8.2505.28\build\native\Microsoft.Direct3D.DXC.props" Condition="Exists('..\..\..\..\..\Packages\Microsoft.Direct3D.DXC.1.8.2505.28\build\native\Microsoft.Direct3D.DXC.props')" />

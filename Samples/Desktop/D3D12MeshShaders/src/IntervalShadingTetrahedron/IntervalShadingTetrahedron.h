@@ -7,9 +7,52 @@
 
 #include "DXSample.h"
 #include <vector>
+#include <map>
+#include <string>
 
 using namespace DirectX;
 using Microsoft::WRL::ComPtr;
+
+struct SceneObject
+{
+    std::string MeshName;
+    XMFLOAT4X4 WorldMatrix;
+    // Cached indices into the global mesh buffers
+    UINT IndexCount;
+    UINT VertexCount;
+    // We need offsets if we pack multiple meshes into one buffer, 
+    // OR we can keep a separate buffer per mesh type.
+    // For simplicity given the current architecture, let's assume we load ONE unique mesh type per object 
+    // or we store the resource pointer here.
+    // Better: Store an index into a m_meshes vector.
+    size_t MeshIndex; 
+    XMFLOAT3 Position;
+    float WaveSpeedScale;
+    float WaveAmplitudeScale;
+};
+
+struct MeshData
+{
+    std::vector<XMFLOAT4> Vertices;
+    std::vector<uint32_t> Indices;
+    ComPtr<ID3D12Resource> VertexBuffer;
+    ComPtr<ID3D12Resource> IndexBuffer; // TetBuffer
+    std::string Name;
+};
+
+// GUI Control IDs
+#define IDC_SLIDER_CLOUDS      1001
+#define IDC_SLIDER_DRIFT       1002
+#define IDC_SLIDER_DEFORM      1003
+#define IDC_SLIDER_DENSITY     1004
+#define IDC_LABEL_CLOUDS       1101
+#define IDC_LABEL_DRIFT        1102
+#define IDC_LABEL_DEFORM       1103
+#define IDC_LABEL_DENSITY      1104
+#define IDC_VALUE_CLOUDS       1201
+#define IDC_VALUE_DRIFT        1202
+#define IDC_VALUE_DEFORM       1203
+#define IDC_VALUE_DENSITY      1204
 
 class IntervalShadingTetrahedron : public DXSample
 {
@@ -21,6 +64,18 @@ public:
     virtual void OnRender();
     virtual void OnDestroy();
     virtual void OnKeyDown(UINT8 key);
+    
+    // GUI control
+    void CreateGUIWindow(HINSTANCE hInstance);
+    static LRESULT CALLBACK GUIWindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+    void UpdateGUIValues();
+    
+    // GUI parameters (public for window proc access)
+    int m_numCloudsVisible;      // Number of clouds to render (1-25)
+    float m_driftSpeed;          // Drift speed multiplier (0-2)
+    float m_deformAmount;        // Deformation amount (0-2)
+    float m_cloudDensity;        // Cloud density (0.1-2.0)
+    static IntervalShadingTetrahedron* s_instance;
 
 private:
     static const UINT FrameCount = 2;
@@ -37,7 +92,13 @@ private:
         uint32_t DebugMode;
         uint32_t TetCount;
         uint32_t RandomizeOrder;
-        float Padding[3];
+        XMFLOAT3 CameraPos;
+        float Time;
+        XMFLOAT3 LightDir;
+        float WaveSpeedScale;
+        uint32_t TetOffset; // Offset into global index buffer
+        float WaveAmplitudeScale;
+        XMFLOAT2 Padding;
     };
 
     // Pipeline objects
@@ -56,6 +117,7 @@ private:
     ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
     ComPtr<ID3D12PipelineState> m_intervalPipelineState;
     ComPtr<ID3D12PipelineState> m_compositePipelineState;
+    ComPtr<ID3D12PipelineState> m_debugPipelineState;
     ComPtr<ID3D12Resource> m_frontRT;
     ComPtr<ID3D12Resource> m_backRT;
     ComPtr<ID3D12Resource> m_opticalDepthRT;
@@ -71,9 +133,14 @@ private:
     SceneConstantBuffer m_constantBufferData;
     UINT8* m_cbvDataBegin;
 
-    float m_cameraAngle;
-    float m_cameraElevation;
-    float m_cameraDistance;
+    // Free-fly camera
+    float m_cameraPosX;
+    float m_cameraPosY;
+    float m_cameraPosZ;
+    float m_cameraYaw;    // Left/right rotation
+    float m_cameraPitch;  // Up/down rotation
+    XMFLOAT3 m_viewForward;  // Actual view forward direction
+    XMFLOAT3 m_viewRight;    // Actual view right direction
     bool m_randomizeDrawOrder;
 
     // Synchronization objects
@@ -83,18 +150,26 @@ private:
     UINT64 m_fenceValues[FrameCount];
 
     // Mesh data
-    std::vector<XMFLOAT4> m_vertices;
-    std::vector<uint32_t> m_tetIndices;
-    ComPtr<ID3D12Resource> m_vertexBuffer;
-    ComPtr<ID3D12Resource> m_tetBuffer;
-    uint8_t* m_tetBufferMapped = nullptr;
-    XMFLOAT4X4 m_modelMatrix;
+    std::vector<XMFLOAT4> m_vertices; 
+    std::vector<uint32_t> m_tetIndices; 
+    ComPtr<ID3D12Resource> m_vertexBuffer; 
+    ComPtr<ID3D12Resource> m_tetBuffer; 
+    
+    // New Scene Data
+    std::vector<MeshData> m_meshes;
+    std::vector<SceneObject> m_sceneObjects;
+    
+    uint8_t* m_tetBufferMapped = nullptr; // TODO: Handle shuffling for multiple meshes or remove
+    XMFLOAT4X4 m_modelMatrix; // Keep for fallback or debug
 
-    bool LoadTetrahedralMesh(const std::wstring& path);
+    bool LoadTetrahedralMesh(const std::wstring& path, MeshData& outMesh);
+    void LoadScene(const std::wstring& scenePath);
+    void OpenMeshFile();
     void CreateIntervalTargets();
     void CreateSrvHeap();
     void BuildIntervalPipelineState();
     void BuildCompositePipelineState();
+    void BuildDebugPipelineState();
     void UploadBuffer(ID3D12Resource** destination, const void* data, size_t byteSize);
     void ShuffleTets();
     void UpdateConstants();
@@ -104,4 +179,16 @@ private:
     void MoveToNextFrame();
     void WaitForGpu();
     std::vector<BYTE> ReadData(const std::wstring& filename);
+    
+    // GUI window handle
+    HWND m_guiWindow;
+    HWND m_sliderClouds;
+    HWND m_sliderDrift;
+    HWND m_sliderDeform;
+    HWND m_sliderDensity;
+    HWND m_valueClouds;
+    HWND m_valueDrift;
+    HWND m_valueDeform;
+    HWND m_valueDensity;
 };
+

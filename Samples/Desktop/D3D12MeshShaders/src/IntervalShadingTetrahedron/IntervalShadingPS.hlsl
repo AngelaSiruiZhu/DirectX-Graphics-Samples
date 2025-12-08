@@ -15,7 +15,13 @@ struct Constants
     uint DebugMode;
     uint TetCount;
     uint RandomizeOrder;
-    float3 Padding;
+    float3 CameraPos;
+    float Time;
+    float3 LightDir;
+    float WaveSpeedScale;
+    uint TetOffset;
+    float WaveAmplitudeScale;
+    float2 Padding;
 };
 
 cbuffer SceneConstants : register(b0)
@@ -57,8 +63,8 @@ PSOutput main(ProxyVertex input)
     float intervalLength = length(worldBack.xyz - worldFront.xyz);
     float tau = intervalLength * Globals.Density;
 
-    float frontDepth = length(worldFront.xyz);
-    float backDepth  = length(worldBack.xyz);
+    float frontDepth = length(worldFront.xyz - Globals.CameraPos);
+    float backDepth  = length(worldBack.xyz - Globals.CameraPos);
 
     o.Front = frontDepth;
     o.Back = backDepth;

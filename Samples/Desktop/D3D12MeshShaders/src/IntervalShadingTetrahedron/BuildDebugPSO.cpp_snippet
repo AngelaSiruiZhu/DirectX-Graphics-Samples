@@ -1,0 +1,59 @@
+
+void IntervalShadingTetrahedron::BuildDebugPipelineState()
+{
+    std::vector<BYTE> meshShader = ReadData(L"DebugMeshMS.cso");
+    std::vector<BYTE> pixelShader = ReadData(L"DebugMeshPS.cso");
+
+    D3D12_GRAPHICS_PIPELINE_STATE_STREAM_DESC psoDesc = {};
+    struct PSO_STREAM
+    {
+        CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE pRootSignature;
+        CD3DX12_PIPELINE_STATE_STREAM_MS MS;
+        CD3DX12_PIPELINE_STATE_STREAM_PS PS;
+        CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER RasterizerState;
+        CD3DX12_PIPELINE_STATE_STREAM_BLEND_DESC BlendState;
+        CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL DepthStencilState;
+        CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+    } stream;
+
+    stream.pRootSignature = m_intervalRootSignature.Get();
+    stream.MS = CD3DX12_SHADER_BYTECODE(meshShader.data(), meshShader.size());
+    stream.PS = CD3DX12_SHADER_BYTECODE(pixelShader.data(), pixelShader.size());
+
+    CD3DX12_RASTERIZER_DESC rasterizer(D3D12_DEFAULT);
+    rasterizer.CullMode = D3D12_CULL_MODE_NONE; // Draw all edges
+    rasterizer.FillMode = D3D12_FILL_MODE_WIREFRAME; // Explicitly wireframe, though topology is line
+    stream.RasterizerState = rasterizer;
+
+    CD3DX12_BLEND_DESC blend(D3D12_DEFAULT);
+    blend.RenderTarget[0].BlendEnable = TRUE;
+    blend.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+    blend.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+    blend.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+    stream.BlendState = blend;
+
+    CD3DX12_DEPTH_STENCIL_DESC depth(D3D12_DEFAULT);
+    depth.DepthEnable = FALSE; // Disable depth test to see all structure? Or TRUE? 
+    // If I enable depth, I need a depth buffer. 
+    // The Composite pass renders to the BackBuffer which HAS a depth buffer attached?
+    // In OnRender, CreateCommandList uses m_depthStencil.
+    // Wait, OnRender/PopulateCommandList logic:
+    // Pass 1: Renders to offscreen float targets. Clears them.
+    // Pass 2: Renders full screen quad to BackBuffer (RTV).
+    // Does Pass 2 use a DSV?
+    // Let's check PopulateCommandList "Second pass" section.
+    // It sets OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr). 
+    // "nullptr" for DSV. So no depth buffer is bound in Second Pass.
+    // So I must disable Depth Test in Debug PSO.
+    stream.DepthStencilState = depth;
+
+    D3D12_RT_FORMAT_ARRAY rtvFormats = {};
+    rtvFormats.NumRenderTargets = 1;
+    rtvFormats.RTFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM; // Backbuffer format
+    stream.RTVFormats = rtvFormats;
+
+    psoDesc.pPipelineStateSubobjectStream = &stream;
+    psoDesc.SizeInBytes = sizeof(stream);
+
+    ThrowIfFailed(m_device->CreatePipelineState(&psoDesc, IID_PPV_ARGS(&m_debugPipelineState)));
+}
