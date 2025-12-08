@@ -1,14 +1,21 @@
 
-<img width="1056" height="262" alt="a95ca667c48bc402a645103c1feb58fa" src="https://github.com/user-attachments/assets/68866e1b-b425-4e3e-880e-7547173344f8" />
+<img src="https://github.com/user-attachments/assets/5a5b0054-1f69-4c4a-a28b-99e0cd0ed422" width="75%"/>
 
-# IntervalCloud – Milestone 2 Report
+# IntervalCloud
 
-**Author:** Crystal Jin, Sirui Zhu, Lijun Qu
-**Date:** November 24, 2025  
-A mesh-shader-based interval shading framework for real-time animated volumetric rendering*  
-(A reimplementation and extension of *Interval Shading: Using Mesh Shaders to Generate Shading Intervals for Volume Rendering*, Tricard 2024)
+**Author:** Crystal Jin, Sirui Zhu, Lijun Qu  
+**Date:** December 7, 2025  
 
-## 1. Overview
+This repository contains the **IntervalShadingTetrahedron** project, a DirectX 12 Mesh Shader sample demonstrating **Interval Shading** for order-independent volumetric rendering. The project renders procedural volumetric clouds and crystal-like objects using tetrahedral meshes.
+
+Based on the paper: *Interval Shading: using Mesh Shaders to generate shading intervals for volume rendering* (Tricard 2024).
+
+**Project Location:**  
+`Samples/Desktop/D3D12MeshShaders/src/IntervalShadingTetrahedron/`
+
+---
+
+## Overview
 This milestone delivers a complete reimplementation of the **Interval Shading** technique using **DirectX 12 Mesh Shaders**, generating order-independent per-pixel depth intervals from a tetrahedral mesh for volume rendering.
 
 The system is extended into **IntervalCloud**, which supports:
@@ -19,153 +26,259 @@ The system is extended into **IntervalCloud**, which supports:
 - Interactive volumetric deformation  
 - A meshlet-inspired acceleration structure for high-parallel processing
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/021dd7af-ff93-4465-a854-12102e1ddeae" alt="a30a6fe2734f14351797354aa9592f66" width="30%" />
-  <img src="https://github.com/user-attachments/assets/c4f9be39-3e28-4eb1-823d-b40440abaff7" alt="af5febd550e3906c8132e6f63e09315c" width="30%" />
-  <img src="https://github.com/user-attachments/assets/dac910b2-6669-492a-b969-cb4840ab05f0" alt="a8220393b86cde8375fadad5d06514af" width="30%" />
-</p>
-
-## 2. Core Implementation
-
-### 2.1 Mesh Shader Pipeline (`IntervalShadingMS.hlsl`)
-The legacy IA → VS → GS pipeline is replaced with a modern **Mesh Shader** pipeline:
-
-**Input**
-- Raw tetrahedral mesh: vertices + indices from `.vtk`
-
-**Processing**
-- Each mesh shader workgroup processes multiple tetrahedra  
-- Near-plane clipping converts partially visible tets into prismoids  
-- Proxy triangles encode depth intervals  
-- Explicit **NDC-space outputs** ensure stable depth reconstruction  
-
-**Output**
-- Triangles encoding `(FrontDepth, BackDepth)` for each pixel
-
-### 2.2 Interval Generation & Shading (`IntervalShadingPS.hlsl`)
-For each rasterized fragment:
-
-- **Front Depth** — entry point of the camera ray  
-- **Back Depth** — exit point  
-- **Optical Depth (Tau)** = `(Back – Front) × Density`
-
-The pixel shader reconstructs view-space depth analytically, avoiding ray marching unless needed by cloud extensions.
-
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/0abf3a8b-7604-458e-88f2-ce532aa7d3f7" alt="5a5b6ff7af73a80c5c5dfab1895692bb" width="30%" />
-  <img src="https://github.com/user-attachments/assets/5d29894c-aaeb-4afb-834a-2d696d5e4777" alt="314af9a5179a0f1a4ab62d7869fef3b2" width="30%" />
-  <img src="https://github.com/user-attachments/assets/99852411-14e6-408d-ae1b-bfdc4de052e2" alt="dd93b5290382432734244891f86f01c0" width="30%" />
-</p>
 
 
 
-### 2.3 Order-Independent Blending
-To aggregate contributions without sorting:
+<table>
+<tr>
+<td align="center">
 
-| Render Target | Content | Blend Op | Purpose |
-| --- | --- | --- | --- |
-| RT0 | Front Depth | `MIN` | First intersection |
-| RT1 | Back Depth | `MAX` | Last intersection |
-| RT2 | Optical Depth | `ADD` | Accumulated density |
+<img src="https://github.com/user-attachments/assets/135eeec5-bfe4-4211-adbc-ebd71e093108" width="400"/>
 
-This uses **Independent Blend States** in the PSO (`IndependentBlendEnable = TRUE`).
+**Realistic Style**
 
-### 2.4 Composite Pass
-A fullscreen pass evaluates:
+</td>
+<td align="center">
 
-- **Transmittance:** `exp(-OpticalDepth)` (Beer–Lambert Law)  
-- **Volumetric Fog/Crystal** appearance from interval data  
+<img src="https://github.com/user-attachments/assets/20452776-9c07-4eb4-aa01-ca061239dbbb" width="400"/>
 
-## 3. Technical Enhancements
+**Cartoon Style**
 
-### 3.1 Meshlet-Like Parallelization Structure (Slide 34–35)
-To scale interval generation:
+</td>
+</tr>
+</table>
 
-1. **Increased Workgroup Size**  
-   - Upgraded from `[numthreads(1,1,1)]` → `[numthreads(16,1,1)]`  
-   - Each workgroup processes **16 tetrahedra in parallel**
+### Video Demo
 
-2. **Wave Intrinsics for Memory Layout**  
-   - Solve branch divergence & memory inconsistency issues described in the original paper  
-   - Threads compute collective offsets before writing  
-   - Entire GPU wave shares results → near-optimal parallel throughput  
+[![Watch the video](https://img.youtube.com/vi/mYOlaZfwEa8/0.jpg)](https://youtu.be/mYOlaZfwEa8)
 
-This greatly accelerates interval generation.
+---
 
-### 3.2 Cloud 1.0 – Interval-Accelerated Ray Marching
-<img width="625" height="461" alt="af5febd550e3906c8132e6f63e09315c" src="https://github.com/user-attachments/assets/5676d3d9-2113-4b91-939d-ea6b73c050ed" />
+## Build Commands
 
-The mesh shader provides the *exact* front/back depth for the cloud, allowing **ray marching only within the occupied interval**, massively reducing empty-space steps.
+```bash
+# Use the build script - ensures shaders are recompiled
+./Samples/Desktop/D3D12MeshShaders/src/IntervalShadingTetrahedron/build.bat
 
-Components:
+# Executable location: Samples/Desktop/D3D12MeshShaders/src/IntervalShadingTetrahedron/bin/runnable.exe
+```
 
-1. **Ray Marching Between Intervals**  
-   - March only from `z_front → z_back`, never outside the cloud volume  
+**IMPORTANT:** Always use `build.bat` instead of calling MSBuild directly. MSBuild doesn't always detect shader changes, so the build script touches all `.hlsl` files before building to force recompilation.
 
-2. **Procedural fBM Noise**  
-   - Animated to simulate breathing, drifting, erosion
+---
 
-3. **Lighting + Self-Shadowing**  
-   - Secondary march toward the light  
-   - Directional + ambient lighting  
-   - **Powder Effect** simulating bright cloud rims  
+## Requirements
 
-### 3.3 Cloud 2.0 – Physically Based Volumetric Cloud Model
-<img width="549" height="422" alt="a8220393b86cde8375fadad5d06514af" src="https://github.com/user-attachments/assets/dd825e7c-ad9f-4ccd-9403-2ae53cd5e5e4" />
+- **OS:** Windows 10 version 2004+ or Windows 11
+- **SDK:** Windows 10 SDK (19041) or later
+- **IDE:** Visual Studio 2019 or 2022 with C++ desktop development workload
+- **GPU:** DirectX 12 Ultimate capable with Mesh Shader support
+  - NVIDIA RTX 20/30/40 series
+  - AMD RX 6000+ series
+- **Node.js:** Required only for cloud generation tool
 
-A more realistic cloud pipeline:
+---
 
-#### Procedural Density
-- fBM cloud density field  
-- Dense areas → opaque & bright  
-- Thin areas → transparent  
+## Architecture and Rendering Pipeline
 
-#### Beer–Lambert Attenuation
-As a ray travels through the volume, it gradually loses energy because the medium absorbs and scatters light. The farther it travels through dense regions, the dimmer it becomes. This accumulated “fading” along the ray is what gives volumetric objects their softness and depth.
+### Two-Pass Rendering System
 
-#### Single Scattering (Physically Based)
-At each point inside the volume, some of the incoming light from the source gets scattered toward the camera. How bright this scattered light appears depends on:
-- how much light from the source actually reaches that point (after traveling through the medium),
-- the direction relationship between the light and the view (the phase function),
-- and the medium’s density at that location.
-This scattered contribution, combined with the gradual attenuation, creates realistic lighting inside clouds, fog, or translucent materials.
+---
 
-#### Henyey–Greenstein Phase Function
-- Forward-biased (g ≈ 0.85)
-- Soft backscatter addition
-- Produces strong rim lighting & natural cloud glow
+### **Pass 1: Interval Generation (Mesh Shader)**
 
-### 3.4 Next Steps
-- Higher-resolution and more realistic cloud structures  
-- Volumetric light shafts (God rays)  
-- Enhanced interactive deformation tools  
-- Procedural cloud presets & artist-friendly controls  
+- **Shader:** `IntervalShadingMS.hlsl`
+- **Input:** Tetrahedral mesh from `.vtk` files (vertices + tetrahedra indices)
 
-## 4. Technical Challenges & Solutions
+**Process:**
+- Near-plane clipping splits tetrahedra into prisms/tets  
+- Generates 2D "proxy triangles" covering the screen-space footprint  
+- Each vertex encodes Front (entry) and Back (exit) depth in NDC coordinates  
 
-### Issue 1: Missing Back Depths (“Black Buffer”)
-**Cause:** Shared blend state prevented mixed MIN/MAX settings  
-**Fix:** Enabled **Independent Logic Blending**
+**Output:** 3 render targets simultaneously
+- `FrontRT` (R16_FLOAT) - MIN blend to capture closest entry depth  
+- `BackRT` (R16_FLOAT) - MAX blend to capture furthest exit depth  
+- `OpticalDepthRT` (R16_FLOAT) - ADD blend to accumulate optical depth  
 
-### Issue 2: Scrambled Geometry
-**Cause:** VTK loader assumed 1-based indexing  
-**Fix:** Updated loader to use proper 0-based indices  
+---
 
-### Issue 3: Resource State Mismatches
-**Fix:** Added robust `ResourceBarrier` transitions for RT → SRV → RT reuse  
+### **Pass 2: Volumetric Composition (Full-Screen Pass)**
 
-## 5. Development Tools
-- **PowerShell Runner (`Tools/run_interval.ps1`)**  
-  Automates build/run with D3D12 Debug Layer  
-- **Debug View Modes (1–4)**  
-  Visualize Front, Back, Interval Length, Optical Depth  
+- **Shaders:** `IntervalCompositeVS.hlsl` + `IntervalCompositePS.hlsl`
 
-## 6. Summary
-This milestone fully reimplements Interval Shading in DX12, integrates a meshlet-style pipeline for high-parallel tetrahedral processing, and extends the system into a real-time volumetric cloud renderer featuring:
+**Process:**
+- Fullscreen triangle covers entire viewport  
+- Pixel shader reads Front/Back/OpticalDepth textures  
+- **Ray marching** between front and back depth intervals  
+- **Procedural density** via 3D FBM noise function  
+- **Lighting** with Beer-Lambert law, self-shadowing, and directional light  
 
-- Procedural density  
-- Interval-accelerated ray marching  
-- Physically based lighting  
-- Interactive volumetric deformation  
+**Render Modes:**
+- Modes 0-4: Debug views (Front Depth, Back Depth, Interval Length, Optical Depth, Transmittance)  
+- Mode 5: Full volumetric cloud rendering with lighting and god rays  
+- Mode 6: Wireframe debug view  
 
-The result is a fast, accurate, artist-friendly volumetric rendering framework suitable for real-time applications.
+---
+
+## Code Structure
+
+### Main Application Files
+- **IntervalShadingTetrahedron.h/cpp** - Main application class, rendering pipeline, scene management  
+- **DXSample.h/cpp** - Base class for window creation and DirectX initialization  
+- **Win32Application.h/cpp** - Win32 window management and message loop  
+- **DXSampleHelper.h** - Utility macros (ThrowIfFailed, GetAssetsPath, etc.)  
+
+---
+
+### Key Components in IntervalShadingTetrahedron.cpp
+
+**Scene Loading:**
+- `LoadTetrahedralMesh()` - Loads `.vtk` files (ASCII format, 0-based indexing)  
+- `LoadScene()` - Loads `scene.json` for multi-object scenes with transforms  
+- Supports multiple mesh instances with position, rotation, scale  
+
+**Pipeline State Objects:**
+- `BuildIntervalPipelineState()` - Mesh Shader + Pixel Shader for interval generation  
+- `BuildCompositePipelineState()` - Fullscreen pass for volumetric composition  
+- `BuildDebugPipelineState()` - Debug rendering modes  
+
+**Rendering:**
+- `PopulateCommandList()` - Records command list with both passes  
+- `UpdateConstants()` - Updates per-frame constant buffer (camera, lighting, density)  
+- `ShuffleTets()` - Randomizes tetrahedra draw order to verify order-independence  
+
+---
+
+## Shader Architecture
+
+### **IntervalShadingMS.hlsl**
+- Mesh Shader entry point with near-plane clipping logic  
+- Outputs up to 128 vertices and 126 triangles per meshlet  
+- Explicit NDC coordinate output to prevent vertex wobbling  
+- Per-tetrahedron world matrix transform for multi-object scenes  
+
+### **IntervalShadingPS.hlsl**
+- Simple pass-through outputting Front/Back/OpticalDepth values  
+- Reconstructs view-space positions from NDC  
+- Calculates optical depth as `(BackDepth - FrontDepth) * Density`  
+
+### **IntervalCompositePS.hlsl**
+- Ray marching implementation with 64 steps  
+- 3D FBM noise (4 octaves) for heterogeneous density  
+- Depth fade at mesh boundaries to prevent hard edges  
+- Directional lighting with phase function and god rays  
+- Multiple debug visualization modes  
+
+---
+
+## Core Features Explainations
+
+### 1. Paper Reimplementation (Tetra Mesh Shading)
+
+Mesh shader loads/clips tetrahedra, emits proxy triangles with explicit NDC; pixel shader captures per-pixel front/back depth and optical depth with MIN/MAX/ADD blending; composite pass ray-marches the interval to shade volume.
+
+**Key Features/Effects:**
+- Order-independence: MIN/MAX blends for front/back intersections; ADD for optical depth—no sorting needed.  
+- Near-plane clipping: Tetrahedra split into valid prisms/tets to avoid artifacts at the near plane.  
+- Explicit NDC output: Stabilizes depth reconstruction in later stages.  
+- Interval shading loop: Composite pass reconstructs world positions, smooths intervals, and integrates density/lighting for clouds.  
+
+
+<img width="1056" height="262" alt="a95ca667c48bc402a645103c1feb58fa" src="https://github.com/user-attachments/assets/68866e1b-b425-4e3e-880e-7547173344f8" />
+
+---
+
+### 2. Cloud Generation
+
+**Location:**  
+`Samples/Desktop/D3D12MeshShaders/src/Tools/generate_cloud.js`
+
+**Usage:**
+```powershell
+node Samples/Desktop/D3D12MeshShaders/src/Tools/generate_cloud.js [options]
+```
+
+**Key Options:**
+- `--mode` - `grid` (connected mesh) or `soup` (disconnected shards for chaotic shapes)  
+- `--shape` - `chaos`, `storm`, `wispy`, `cumulus`  
+- `--res` - Grid resolution (32, 64, 128+)  
+- `--thresh` - Density threshold (0.2 = denser, 0.4 = sparser with holes)  
+- `--out` - Output path for `.vtk` file  
+
+**Example:**
+```powershell
+node Samples/Desktop/D3D12MeshShaders/src/Tools/generate_cloud.js --mode soup --shape chaos --res 64 --thresh 0.2 --out Samples/Desktop/D3D12MeshShaders/src/Assets/IntervalShading/my_cloud.vtk
+```
+
+---
+
+### 3. Deformation
+
+Time-varying FBM noise (base/detail/micro) modulates density to make clouds drift, billow, and subtly reshape.  
+Edge handling via coverage-aware fades and interval padding to soften silhouettes or keep them tighter.
+
+**Key Parameters/Effects:**
+- Noise scales & time factors (FBM octaves) — adjust drift speed and micro detail  
+- `fadeWidthBase`, edge exponent — control softness of cloud boundaries  
+- `densityScale` — overall bulk; higher = thicker, darker cores  
+- Interval padding — expands/contracts near/far bounds to smooth silhouettes  
+
+---
+
+### 4. God Ray Light Pass
+
+Screen-space radial sampling toward the light; jittered taps with decay to keep shafts soft.
+
+**Key Parameters/Effects:**
+- `density`, `weight`, `decay` — strength and softness of shafts  
+- Coverage/density sampling — attenuates rays through thick volume, boosts through gaps  
+- Distance attenuation to light — tempers ray brightness with depth  
+- Sun hotspot exponent/intensity — controls halo size and brightness around the light
+
+<table>
+<tr>
+<td align="center">
+
+<img src="https://github.com/user-attachments/assets/0572432a-ba82-4230-aec2-5370f951edf0" width="400"/>
+
+</td>
+<td align="center">
+
+<img src="https://github.com/user-attachments/assets/6bd34b30-3923-4624-83a6-94aa3c352dd3" width="400"/>
+
+
+</td>
+</tr>
+</table>
+
+---
+
+### 5. Terrain Generation
+
+Procedural sky/ground with FBM-based heightfield, simple lighting, fog blend, and layered albedo (grass/dirt/rock/snow).
+
+**Key Parameters/Effects:**
+- `groundBaseHeight`, `terrainAmp` — base plane and relief amplitude  
+- FBM noise scale (`fbm2D` inputs) — controls terrain roughness  
+- Layer blends (grass/dirt/rock/snow thresholds) — shifts surface look and snowline  
+- Light vector (`float3(0.5,-1,-0.5)`) — affects shading on slopes  
+- Fog factor (`exp(-t * 0.005)`) — blends ground into horizon  
+
+---
+
+### 6. GUI Cloud Control Window
+
+A Win32 “Cloud Controls” window with sliders and labels to tweak cloud rendering at runtime; toggle visibility via the app’s debug/back key handling.
+
+**Key Controls/Effects:**
+- Cloud Count: Adjust how many clouds render (`m_numCloudsVisible`), culling the draw loop accordingly.  
+- Drift Speed: Scales time-varying FBM drift for cloud motion; affects per-cloud speed and amplitude.  
+- Deformation Amount: Scales wave amplitude/speed for procedural deformation, changing silhouette motion.  
+- Cloud Density: Scales `m_cloudDensity`, passed into the constant buffer to thicken or lighten clouds.  
+
+Values sync to labels in `UpdateGUIValues`; sliders are initialized with sensible ranges  
+(e.g., density 0.10–2.00, drift 0–10.00, deformation 0–3.00, cloud count 1–25).
+
+![d188d9b4f7e5a1f4f8d412fdcf2a4dbf](https://github.com/user-attachments/assets/8995d9dc-9f9a-41af-a232-41248135eb72)
+
+---
