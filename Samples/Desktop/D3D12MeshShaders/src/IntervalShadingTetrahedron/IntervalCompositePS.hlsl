@@ -152,24 +152,20 @@ float fbm2D(float2 p)
 //for cloud density
 float GetDensity(float3 p)
 {
-    // Lower-frequency base keeps big, soft lobes; higher-frequency detail adds gentle breakup
-    float base = fbm(p * 0.6 + float3(0.0, 0.0, Globals.Time * 0.05));
-    float detail = fbm(p * 1.6 + float3(Globals.Time * 0.08, 0.0, 0.0));
-    float micro = fbm(p * 3.2 + float3(0.0, Globals.Time * 0.06, 0.0));
-    float d = lerp(base, detail, 0.35f);
-    d = d + micro * 0.12f;
-    d = smoothstep(0.30f, 0.82f, d);
-    return saturate(pow(d, 0.90f) * 0.74f);
+    float base = noise(p * 1.2 + float3(0.0, 0.0, Globals.Time * 0.1));
+    float drift = noise(p * 0.45 + float3(Globals.Time * 0.025, 0.0, 0.0));
+    float d = lerp(base, drift, 0.35f);
+    d = smoothstep(0.42f, 0.85f, d);
+    return saturate(d * 0.45f);
 }
 
 float GetDensityLowQ(float3 p)
 {
-    float base = fbm(p * 0.55 + float3(0.0, 0.0, Globals.Time * 0.05));
-    float detail = fbm(p * 1.4 + float3(Globals.Time * 0.08, 0.0, 0.0));
-    float micro = fbm(p * 3.0 + float3(0.0, Globals.Time * 0.06, 0.0));
-    float d = lerp(base, detail, 0.3f) + micro * 0.1f;
-    d = smoothstep(0.30f, 0.8f, d);
-    return saturate(pow(d, 0.90f) * 0.7f);
+    float base = noise(p * 1.0 + float3(0.0, 0.0, Globals.Time * 0.1));
+    float drift = noise(p * 0.4 + float3(Globals.Time * 0.025, 0.0, 0.0));
+    float d = lerp(base, drift, 0.3f);
+    d = smoothstep(0.42f, 0.82f, d);
+    return saturate(d * 0.45f);
 }
 
 float3 DepthToGray(float d)
@@ -215,7 +211,7 @@ float3 GetProceduralBackground(float3 rayDir)
 
     float3 col = lerp(horizon, skyTop, pow(max(0, -rayDir.y), 0.8));
 
-    const float groundBaseHeight = 5.0;
+    const float groundBaseHeight = 40.0;
     const float terrainAmp       = 15.0;
     const float step             = 0.1;
     const float maxDistance      = 500.0;
@@ -358,8 +354,7 @@ float4 main(PSIn input) : SV_Target
         float cloudTransmittance = 1.0;
         float3 accumulatedLight = 0;
 
-        // Key light: slightly above horizon and off-axis for softer, angled illumination
-        float3 lightPos = float3(-40.0, 32.0, -15.0);
+        float3 lightPos = float3(0.0, -35.0, 0.0);
         float3 lightColor = float3(1.0, 0.9, 0.7) * 0.24;
 
         float2 ndc = uv * 2.0 - 1.0;
@@ -374,10 +369,10 @@ float4 main(PSIn input) : SV_Target
         if (hasVolume)
         {
             float dist = front;
-            float baseStep = 0.018f;
-            float stepSize = lerp(baseStep * 1.15f, baseStep * 0.9f, coverageWeight);
-            float fadeWidthBase = lerp(0.55f, 0.95f, coverageWeight); // soften edges
-            float densityScale = lerp(0.55f, 1.45f, coverageWeight);  // puffier core + more mass
+            float baseStep = 0.02f;
+            float stepSize = lerp(baseStep * 1.2f, baseStep, coverageWeight);
+            float fadeWidthBase = lerp(0.3f, 0.55f, coverageWeight);
+            float densityScale = lerp(1.0f, 1.0f, coverageWeight);
 
             for (int i = 0; i < 64; i++)
             {
@@ -388,7 +383,7 @@ float4 main(PSIn input) : SV_Target
                 float densityBase = GetDensity(p * Globals.Density);
                 float fadeFront = saturate((dist - front) / fadeWidthBase);
                 float fadeBack  = saturate((back - dist) / fadeWidthBase);
-                float edgeFade = pow(fadeFront * fadeBack, lerp(0.42f, 0.9f, coverageWeight));
+                float edgeFade = pow(fadeFront * fadeBack, lerp(0.55f, 1.0f, coverageWeight));
                 float density = saturate(densityBase * 2.0f) * edgeFade * densityScale;
 
                 if (density > 0.0001f)
@@ -405,17 +400,15 @@ float4 main(PSIn input) : SV_Target
                     float directT   = exp(-shadowDensity * 1.0);
                     float scatterT  = exp(-shadowDensity * 0.5);
                     
-                    // Distance attenuation
                     float attenuation = 1.0 / (1.0 + distToLight * distToLight * 0.005);
 
-                    float3 sunColor = float3(1.0,0.95,0.9) * 0.5;
-                    float3 ambient  = float3(0.6,0.6,0.7) * 0.8;
+                    float3 sunColor = float3(1.0,0.95,0.9) * 1;
+                    float3 ambient = float3(0.6,0.6,0.6) * 0;
 
                     float3 incoming =
-                        lightColor * 70 * (directT + scatterT * 0.001) * attenuation
-                        + ambient * 1.1;
+                        lightColor * 20 * (directT + scatterT * 0.01) * attenuation + ambient;
 
-                    float stepTransmittance = exp(-density * stepSize * 0.42f); // denser absorb
+                    float stepTransmittance = exp(-density * stepSize * 0.6f);
                     float3 scattered = incoming * density * stepSize;
 
                     accumulatedLight += scattered * cloudTransmittance;
@@ -427,13 +420,18 @@ float4 main(PSIn input) : SV_Target
         }
 
         float3 skyColor = GetProceduralBackground(rayDir);
+        float3 ambient = float3(1,1,1) * 0.75;
+        accumulatedLight += ambient;
 
         // Visualize light source (Sun)
         float3 lVec = normalize(lightPos - Globals.CameraPos);
-        float sun = pow(max(0, dot(rayDir, lVec)), 5000.0);
-        skyColor += float3(1.0, 0.8, 0.6) * sun * 50.0;
+        float sun = pow(max(0, dot(rayDir, lVec)), 10000.0);
+        skyColor += float3(1.0, 0.8, 0.6) * sun * 100.0;
 
-        float safeTrans = lerp(1.0f, cloudTransmittance, coverageWeight);
+        float minTrans = 0.3f;
+        float maxTrans = 1.0f;
+        float safeTrans = lerp(maxTrans, minTrans, saturate((coverageWeight - 0.2f) / 0.8f));
+        safeTrans = lerp(safeTrans, cloudTransmittance, 1.0 - coverageWeight);
         float3 finalCloud = accumulatedLight + skyColor * safeTrans;
         finalCloud = lerp(skyColor, finalCloud, coverageWeight);
 
@@ -445,9 +443,9 @@ float4 main(PSIn input) : SV_Target
 
         float2 delta = (uv - lightScreen);
         int samples = 64;
-        float density = 0.38;
-        float weight  = 0.08; 
-        float decay   = 0.93; 
+        float density = 0.2;
+        float weight  = 0.15;
+        float decay   = 0.98;
 
         // Pre-calculate air attenuation
         float airDist = length(Globals.CameraPos - lightPos);
@@ -484,7 +482,7 @@ float4 main(PSIn input) : SV_Target
                                      GetDensityLowQ(p2 * Globals.Density)),
                                      GetDensityLowQ(p3 * Globals.Density));
 
-                float block = smoothstep(0.2f, 0.6f, maxD);
+                float block = smoothstep(0.45f, 0.8f, maxD); // less cloud blocking
                 sampleT = (1.0f - block) * coverageWeight;
 
                 float distToLight = length(p2 - lightPos);
@@ -500,7 +498,7 @@ float4 main(PSIn input) : SV_Target
             illuminationDecay *= decay;
         }
 
-        color = finalCloud + godRayColor * float3(0.35, 0.32, 0.28) * coverageWeight;
+        color = finalCloud + godRayColor * float3(2.2, 2, 1.5) * (1.0 - coverageWeight); // strong, warm beam
         break;
         }
     }
