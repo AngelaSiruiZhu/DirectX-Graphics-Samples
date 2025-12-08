@@ -344,7 +344,7 @@ float4 main(PSIn input) : SV_Target
             }
         }
 
-        float hullPadding = edgeBlend * 0.55f;
+        float hullPadding = edgeBlend * 0.85f;
         front = max(front - hullPadding, 0.0f);
         back += hullPadding;
 
@@ -371,7 +371,7 @@ float4 main(PSIn input) : SV_Target
             float dist = front;
             float baseStep = 0.02f;
             float stepSize = lerp(baseStep * 1.2f, baseStep, coverageWeight);
-            float fadeWidthBase = lerp(0.3f, 0.55f, coverageWeight);
+            float fadeWidthBase = lerp(0.85f, 1.4f, coverageWeight);
             float densityScale = lerp(1.0f, 1.0f, coverageWeight);
 
             for (int i = 0; i < 64; i++)
@@ -383,7 +383,7 @@ float4 main(PSIn input) : SV_Target
                 float densityBase = GetDensity(p * Globals.Density);
                 float fadeFront = saturate((dist - front) / fadeWidthBase);
                 float fadeBack  = saturate((back - dist) / fadeWidthBase);
-                float edgeFade = pow(fadeFront * fadeBack, lerp(0.55f, 1.0f, coverageWeight));
+                float edgeFade = pow(fadeFront * fadeBack, lerp(0.3f, 0.65f, coverageWeight));
                 float density = saturate(densityBase * 2.0f) * edgeFade * densityScale;
 
                 if (density > 0.0001f)

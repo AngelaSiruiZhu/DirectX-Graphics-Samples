@@ -6967,3 +6967,823 @@ Found object with mesh: cloud_6.vtk
 Added SceneObject. Total objects: 24
 Found object with mesh: cloud_1.vtk
 Added SceneObject. Total objects: 25
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_3.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_3.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_2.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_2.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_4.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_4.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_5.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_5.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_6.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_6.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_1.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_1.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 8
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 9
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 10
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 11
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 12
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 13
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 14
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 15
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 16
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 17
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 18
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 19
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 20
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 21
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 22
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 23
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 24
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 25
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_3.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_3.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_2.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_2.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_4.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_4.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_5.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_5.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_6.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_6.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_1.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_1.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 8
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 9
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 10
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 11
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 12
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 13
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 14
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 15
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 16
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 17
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 18
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 19
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 20
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 21
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 22
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 23
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 24
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 25
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_3.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_3.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_2.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_2.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_4.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_4.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_5.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_5.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_6.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_6.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_1.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_1.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 8
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 9
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 10
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 11
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 12
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 13
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 14
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 15
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 16
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 17
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 18
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 19
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 20
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 21
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 22
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 23
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 24
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 25
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_3.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_3.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_2.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_2.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_4.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_4.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_5.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_5.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_6.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_6.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_1.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_1.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 8
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 9
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 10
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 11
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 12
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 13
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 14
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 15
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 16
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 17
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 18
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 19
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 20
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 21
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 22
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 23
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 24
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 25
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_3.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_3.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_2.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_2.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_4.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_4.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_5.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_5.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_6.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_6.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_1.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_1.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 8
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 9
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 10
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 11
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 12
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 13
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 14
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 15
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 16
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 17
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 18
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 19
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 20
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 21
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 22
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 23
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 24
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 25
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_3.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_3.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_2.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_2.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_4.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_4.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_5.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_5.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_6.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_6.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_1.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_1.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 8
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 9
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 10
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 11
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 12
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 13
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 14
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 15
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 16
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 17
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 18
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 19
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 20
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 21
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 22
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 23
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 24
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 25
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_3.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_3.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_2.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_2.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_4.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_4.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_5.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_5.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_6.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_6.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_1.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_1.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 8
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 9
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 10
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 11
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 12
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 13
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 14
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 15
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 16
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 17
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 18
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 19
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 20
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 21
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 22
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 23
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 24
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 25
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_3.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_3.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_2.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_2.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_4.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_4.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_5.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_5.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_6.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_6.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_1.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_1.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 8
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 9
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 10
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 11
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 12
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 13
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 14
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 15
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 16
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 17
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 18
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 19
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 20
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 21
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 22
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 23
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 24
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 25
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_3.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_3.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_2.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_2.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_4.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_4.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_5.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_5.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_6.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_6.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_1.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_1.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 8
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 9
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 10
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 11
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 12
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 13
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 14
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 15
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 16
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 17
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 18
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 19
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 20
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 21
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 22
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 23
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 24
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 25
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_3.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_3.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_2.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_2.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_4.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_4.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_5.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_5.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_6.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_6.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_1.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_1.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 8
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 9
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 10
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 11
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 12
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 13
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 14
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 15
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 16
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 17
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 18
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 19
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 20
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 21
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 22
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 23
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 24
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 25
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_3.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_3.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_2.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_2.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_4.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_4.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_5.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_5.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_6.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_6.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_1.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_1.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 8
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 9
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 10
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 11
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 12
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 13
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 14
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 15
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 16
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 17
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 18
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 19
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 20
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 21
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 22
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 23
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 24
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 25
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_3.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_3.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_2.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_2.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_4.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_4.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_5.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_5.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_6.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_6.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_1.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_1.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 8
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 9
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 10
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 11
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 12
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 13
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 14
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 15
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 16
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 17
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 18
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 19
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 20
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 21
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 22
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 23
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 24
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 25
+Attempting to load scene from: ..\..\Assets\IntervalShading\scene.json
+Found object with mesh: cloud_3.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_3.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 1
+Found object with mesh: cloud_2.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_2.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 2
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 3
+Found object with mesh: cloud_4.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_4.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 4
+Found object with mesh: cloud_5.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_5.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 5
+Found object with mesh: cloud_6.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_6.vtk
+Loaded mesh. Vertices: 10245
+Added SceneObject. Total objects: 6
+Found object with mesh: cloud_1.vtk
+Loading mesh from: ..\..\Assets\IntervalShading\cloud_1.vtk
+Loaded mesh. Vertices: 10247
+Added SceneObject. Total objects: 7
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 8
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 9
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 10
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 11
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 12
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 13
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 14
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 15
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 16
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 17
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 18
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 19
+Found object with mesh: cloud_2.vtk
+Added SceneObject. Total objects: 20
+Found object with mesh: cloud_3.vtk
+Added SceneObject. Total objects: 21
+Found object with mesh: cloud_4.vtk
+Added SceneObject. Total objects: 22
+Found object with mesh: cloud_5.vtk
+Added SceneObject. Total objects: 23
+Found object with mesh: cloud_6.vtk
+Added SceneObject. Total objects: 24
+Found object with mesh: cloud_1.vtk
+Added SceneObject. Total objects: 25
