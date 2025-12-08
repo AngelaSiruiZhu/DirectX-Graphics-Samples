@@ -40,6 +40,20 @@ struct MeshData
     std::string Name;
 };
 
+// GUI Control IDs
+#define IDC_SLIDER_CLOUDS      1001
+#define IDC_SLIDER_DRIFT       1002
+#define IDC_SLIDER_DEFORM      1003
+#define IDC_SLIDER_DENSITY     1004
+#define IDC_LABEL_CLOUDS       1101
+#define IDC_LABEL_DRIFT        1102
+#define IDC_LABEL_DEFORM       1103
+#define IDC_LABEL_DENSITY      1104
+#define IDC_VALUE_CLOUDS       1201
+#define IDC_VALUE_DRIFT        1202
+#define IDC_VALUE_DEFORM       1203
+#define IDC_VALUE_DENSITY      1204
+
 class IntervalShadingTetrahedron : public DXSample
 {
 public:
@@ -50,6 +64,18 @@ public:
     virtual void OnRender();
     virtual void OnDestroy();
     virtual void OnKeyDown(UINT8 key);
+    
+    // GUI control
+    void CreateGUIWindow(HINSTANCE hInstance);
+    static LRESULT CALLBACK GUIWindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+    void UpdateGUIValues();
+    
+    // GUI parameters (public for window proc access)
+    int m_numCloudsVisible;      // Number of clouds to render (1-25)
+    float m_driftSpeed;          // Drift speed multiplier (0-2)
+    float m_deformAmount;        // Deformation amount (0-2)
+    float m_cloudDensity;        // Cloud density (0.1-2.0)
+    static IntervalShadingTetrahedron* s_instance;
 
 private:
     static const UINT FrameCount = 2;
@@ -153,5 +179,16 @@ private:
     void MoveToNextFrame();
     void WaitForGpu();
     std::vector<BYTE> ReadData(const std::wstring& filename);
+    
+    // GUI window handle
+    HWND m_guiWindow;
+    HWND m_sliderClouds;
+    HWND m_sliderDrift;
+    HWND m_sliderDeform;
+    HWND m_sliderDensity;
+    HWND m_valueClouds;
+    HWND m_valueDrift;
+    HWND m_valueDeform;
+    HWND m_valueDensity;
 };
 
